@@ -11,12 +11,13 @@ namespace Test
 
         private void Form1_Load(object sender, EventArgs e)
         {
-            TextArea a = new TextArea();
-            a.BackColor = Color.White;
-            a.Bounds = new Rectangle(120, 120, 500, 500);
-            a.Font = new Font("Consolas", 22);
-            a.Document.Text = "using System;\r\nusing System.Linq;";
-            Controls.Add(a);
+            TextArea c = new TextArea();
+            c.BackColor = Color.White;
+            c.Bounds = new Rectangle(120, 120, 500, 500);
+            c.Font = new Font("Consolas", 22);
+            c.Document.Text = File.ReadAllText(@"C:\workspace\CSharp\VsProjects\XEdit\XEdit\CSharpCodeAnalyzer.cs");
+            c.Dock = DockStyle.Fill;
+            Controls.Add(c);
         }
     }
 }

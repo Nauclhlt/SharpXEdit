@@ -18,13 +18,13 @@ namespace SharpXEdit
     [TypeConverter(typeof(ExpandableObjectConverter))]
     public sealed class TextAreaTheme
     {
-        private Color _backgroundColor;
-        private Color _textColor;
-        private Color _caretColor;
-        private Color _lineNumberColor;
-        private Color _lineNumberBackgroundColor;
-        private Color _caretLineNumberColor;
-        private Color _caretLineNumberBackgroundColor;
+        private Color _backgroundColor = Color.White;
+        private Color _textColor = Color.Black;
+        private Color _caretColor = Color.Black;
+        private Color _lineNumberColor = Color.Gray;
+        private Color _lineNumberBackgroundColor = Color.White;
+        private Color _caretLineNumberColor = Color.Gray;
+        private Color _caretLineNumberBackgroundColor = Color.White;
 
         /// <summary>
         /// Background color of a text area

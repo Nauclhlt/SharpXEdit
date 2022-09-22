@@ -50,7 +50,10 @@ namespace SharpXEdit
             {
                 if (value is null)
                     return;
+
+                RemoveDocumentEvents(_document);
                 _document = value;
+                AddDocumentEvents(_document);
             }
         }
 
@@ -88,6 +91,7 @@ namespace SharpXEdit
 
             _document = new Document(this);
 
+
             Cursor = Cursors.IBeam;
         }
 
@@ -119,14 +123,38 @@ namespace SharpXEdit
                     for (int j = 0; j < lineCodeRanges.Count; j++)
                     {
                         CodeRange codeRange = lineCodeRanges[j];
-                        TextRenderer.DrawText(g, codeRange.Text, Font, new Point(codeRange.XOffset, codeRange.YOffset), codeRange.Style.Color);
+                        TextRenderer.DrawText(g, codeRange.Text, Font, new Point(codeRange.XOffset - _document.Scroll.Horizontal, codeRange.YOffset - _document.Scroll.Vertical), codeRange.Style.Color, Util.Shared.TextFormatFlags);
                     }
                 }
             }
 
             //Draw caret
-            Point point = _document.SourceCodeManager.GetCaretPoint(_document.Caret);
-            
+            {
+                Point point = _document.SourceCodeManager.GetCaretPoint(_document.Caret);
+                SolidBrush brush = BrushFactory.GetInstance(_theme.CaretColor);
+                g.FillRectangle(brush, point.X, point.Y, 2, FontHeight);
+            }
+
+            RenderLineNumbers(g);
+        }
+
+        private void RenderLineNumbers( Graphics g )
+        {
+            SolidBrush backBrush = BrushFactory.GetInstance(_theme.LineNumberBackgroundColor);
+            g.FillRectangle(backBrush, 0, 0, _lineNumberWidth, Height);
+
+            int lineStart = _document.SourceCodeManager.GetLineStart();
+            int lineCount = _document.SourceCodeManager.GetVisibleLineCount();
+
+            for (int i = lineStart; i < lineStart + lineCount; i++)
+            {
+                if (i < 0 || i >= _document.Cache.LineCount)
+                    return;
+
+                string text = (i + 1).ToString();
+                int w = _document.SourceCodeManager.GetWidth(text);
+                TextRenderer.DrawText(g, text, Font, new Point(_lineNumberWidth - w - 2, FontHeight * i - _document.Scroll.Vertical), i == _document.Caret.Line ? _theme.CaretLineNumberColor : _theme.LineNumberColor);
+            }
         }
 
         private void CreateLineCodeRanges( int lineIndex )
@@ -197,9 +225,46 @@ namespace SharpXEdit
             if (character == '\r')
             {
                 BreakLine();
+                _document.Caret.Set(_document.Caret.Line + 1, 0);
+                CreateAllVisibleCodeRanges();
                 Invalidate();
                 return;
             }
+
+            int charIndex = _document.Caret.GetCharIndex();
+
+            if (character == '\b')
+            {
+                if (_document.Caret.Column == 0)
+                {
+                    // Delete line
+                    if (_document.Caret.Line > 0)
+                    {
+                        string code = _document.LineFeedCode.GetCode();
+                        string prevLine = _document.Cache.GetLineText(_document.Caret.Line - 1);
+                        _document.IDA.Remove(charIndex - code.Length, code.Length);
+                        _document.Caret.Set(_document.Caret.Line - 1, prevLine.Length);
+
+                        CreateAllVisibleCodeRanges();
+                        Invalidate();
+                    }
+                }
+                else
+                {
+                    _document.IDA.Remove(charIndex - 1, 1);
+                    _document.Caret.Offset(0, -1);
+
+                    UpdateLine(_document.Caret.Line);
+                }
+
+                return;
+            }
+            
+            _document.IDA.Insert(charIndex, character);
+
+            _document.Caret.Offset(0, 1);
+
+            UpdateLine(_document.Caret.Line);
         }
 
         private void InvisualInput( char value )
@@ -217,6 +282,12 @@ namespace SharpXEdit
             _document.IDA.BreakLine();
         }
 
+        private void UpdateLine( int lineIndex )
+        {
+            CreateLineCodeRanges(lineIndex);
+            Invalidate();
+        }
+
         protected override bool ProcessCmdKey(ref Message msg, Keys keyData)
         {
             if ((keyData & Keys.Control) == Keys.Control)
@@ -227,6 +298,114 @@ namespace SharpXEdit
             return base.ProcessCmdKey(ref msg, keyData);
         }
 
+        protected override bool ProcessDialogKey(Keys keyData)
+        {
+            Keys keyWithoutModifier = keyData & ~Keys.Modifiers;
+            Keys modifiers = keyData & Keys.Modifiers;
+            
+            if (keyWithoutModifier == Keys.Right)
+            {
+                string line = _document.Cache.GetLineText(_document.Caret.Line);
+                if (_document.Caret.Column == line.Length)
+                {
+                    if (_document.Caret.Line < _document.Cache.LineCount - 1)
+                        _document.Caret.Set(_document.Caret.Line + 1, 0);
+                }
+                else
+                {
+                    _document.Caret.Offset(0, 1);
+                }
+
+                _document.SavedCaretColumn = _document.Caret.Column;
+
+                Invalidate();
+                return true;
+            }
+
+            if (keyWithoutModifier == Keys.Left)
+            {
+                if (_document.Caret.Column == 0)
+                {
+                    if (_document.Caret.Line > 0)
+                        _document.Caret.Set(_document.Caret.Line - 1, _document.Cache.GetLineText(_document.Caret.Line - 1).Length);
+                }
+                else
+                {
+                    _document.Caret.Offset(0, -1);
+                }
+
+                _document.SavedCaretColumn = _document.Caret.Column;
+
+                Invalidate();
+                return true;
+            }
+
+            if (keyWithoutModifier == Keys.Down)
+            {
+                if (_document.Caret.Line < _document.Cache.LineCount - 1)
+                {
+                    string nextLine = _document.Cache.GetLineText(_document.Caret.Line + 1);
+                    if (_document.Caret.Column > _document.SavedCaretColumn)
+                    {
+                        _document.SavedCaretColumn = _document.Caret.Column;
+                    }
+                    if (nextLine.Length < _document.Caret.Column)
+                        _document.Caret.Set(_document.Caret.Line + 1, nextLine.Length);
+                    else
+                        _document.Caret.Set(_document.Caret.Line + 1, Math.Min(nextLine.Length, _document.SavedCaretColumn));
+
+                    Invalidate();
+                }
+
+                return true;
+            }
+
+            if (keyWithoutModifier == Keys.Up)
+            {
+                if (_document.Caret.Line > 0)
+                {
+                    string prevLine = _document.Cache.GetLineText(_document.Caret.Line - 1);
+                    if (_document.Caret.Column > _document.SavedCaretColumn)
+                    {
+                        _document.SavedCaretColumn = _document.Caret.Column;
+                    }
+                    if (prevLine.Length < _document.Caret.Column)
+                        _document.Caret.Set(_document.Caret.Line - 1, prevLine.Length);
+                    else
+                        _document.Caret.Set(_document.Caret.Line - 1, Math.Min(prevLine.Length, _document.SavedCaretColumn));
+
+                    Invalidate();
+                }
+
+                return true;
+            }
+
+            return base.ProcessDialogKey(keyData);
+        }
+
+        private void OnVerticalScrollChanged( object sender, EventArgs e )
+        {
+            CreateAllVisibleCodeRanges();
+            Invalidate();
+        }
+
+        private void OnHorizontalScrollChanged( object sender, EventArgs e )
+        {
+
+        }
+
+
+        private void AddDocumentEvents( Document doc )
+        {
+            doc.Scroll.VerticalChanged += OnVerticalScrollChanged;
+            doc.Scroll.HorizontalChanged += OnHorizontalScrollChanged;
+        }
+
+        private void RemoveDocumentEvents( Document doc )
+        {
+            doc.Scroll.VerticalChanged -= OnVerticalScrollChanged;
+            doc.Scroll.HorizontalChanged -= OnHorizontalScrollChanged;
+        }
 
 
         protected override void Dispose(bool disposing)

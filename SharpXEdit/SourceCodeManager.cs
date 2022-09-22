@@ -42,10 +42,10 @@ namespace SharpXEdit
         public int GetWidth( ReadOnlySpan<char> span )
         {
             string value = new string(span);
-            int aWidth = TextRenderer.MeasureText(_graphics, "A", _textArea.Font, new Size(int.MaxValue, int.MaxValue), Util.Shared.TextFormatFlags).Width;
-            int width = TextRenderer.MeasureText(_graphics, "A" + value + "A", _textArea.Font, new Size(int.MaxValue, int.MaxValue), Util.Shared.TextFormatFlags).Width;
+            //int aWidth = TextRenderer.MeasureText(_graphics, "A", _textArea.Font, new Size(int.MaxValue, int.MaxValue), Util.Shared.TextFormatFlags).Width;
+            //int width = TextRenderer.MeasureText(_graphics, "A" + value + "A", _textArea.Font, new Size(int.MaxValue, int.MaxValue), Util.Shared.TextFormatFlags).Width;
 
-            return width - (aWidth << 1);
+            return TextRenderer.MeasureText(value, _textArea.Font, new Size(int.MaxValue, int.MaxValue), Util.Shared.TextFormatFlags).Width;
         }
 
         public int GetLineTop( int lineIndex )
@@ -55,12 +55,10 @@ namespace SharpXEdit
 
         public Point GetCaretPoint( Caret caret )
         {
-            int lineNumWidth = _textArea.LineNumberWidth;
-            int margin = Util.Shared.LeftMargin;
             string line = _document.Cache.GetLineText(caret.Line);
             int width = GetWidth(line.AsSpan(0, caret.Column));
 
-            return new Point(lineNumWidth + margin + width, GetLineTop(caret.Line));
+            return new Point(GetTextLeft() + width, GetLineTop(caret.Line));
         }
 
         public int GetLineStart()
@@ -76,6 +74,11 @@ namespace SharpXEdit
         public int GetTextLeft()
         {
             return _textArea.LineNumberWidth + Util.Shared.LeftMargin;
+        }
+
+        public Rectangle GetLineRefreshBounds(int line)
+        {
+            return new Rectangle(_textArea.LineNumberWidth, line * _textArea.FontHeight - _document.Scroll.Vertical, _textArea.Width - _textArea.LineNumberWidth, _textArea.FontHeight);
         }
 
         /// <summary>

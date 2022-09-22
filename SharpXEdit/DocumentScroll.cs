@@ -46,6 +46,7 @@ namespace SharpXEdit
                 int max = _document.Parent.FontHeight * (_document.Cache.LineCount - 1);
 
                 _vertical = Math.Clamp(value, 0, max);
+                //_vertical = value;
                 VerticalChanged?.Invoke(this, EventArgs.Empty);
             }
         }

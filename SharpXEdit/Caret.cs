@@ -60,7 +60,9 @@ namespace SharpXEdit
         /// <param name="index">character index</param>
         public void SetCharIndex( int index )
         {
-
+            TextPoint pt = _parent.Document.Cache.GetPoint(index);
+            _line = pt.Line;
+            _column = pt.Column;
         }
 
         /// <summary>
@@ -72,6 +74,17 @@ namespace SharpXEdit
         {
             _line = line;
             _column = column;
+        }
+
+        /// <summary>
+        /// Offsets the line and column index of the instance
+        /// </summary>
+        /// <param name="line">line index offset</param>
+        /// <param name="column">column index offset</param>
+        public void Offset( int line, int column )
+        {
+            _line += line;
+            _column += column;
         }
     }
 }

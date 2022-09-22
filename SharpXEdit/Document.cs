@@ -33,6 +33,15 @@ namespace SharpXEdit
                 _document.RecreateManager();
             }
 
+            public void Insert( int index, char value )
+            {
+                _document.Builder.Insert(index, value);
+
+                _document.CreateCache();
+                _document.RaiseTextChanged();
+                _document.RecreateManager();
+            }
+
             public void Replace( string oldStr, string newStr )
             {
                 _document.Builder.Replace(oldStr, newStr);
@@ -45,6 +54,15 @@ namespace SharpXEdit
             public void Replace( char oldChar, char newChar )
             {
                 _document.Builder.Replace(oldChar, newChar);
+
+                _document.CreateCache();
+                _document.RaiseTextChanged();
+                _document.RecreateManager();
+            }
+
+            public void Remove( int index, int length )
+            {
+                _document.Builder.Remove(index, length);
 
                 _document.CreateCache();
                 _document.RaiseTextChanged();
@@ -85,6 +103,7 @@ namespace SharpXEdit
         private SourceCodeColor _sourceCodeColor;
         private InternalDocumentAccess _ida;
         private bool _isUserModified = false;
+        private int _savedCaretColumn = 0;
 
         /// <summary>
         /// Gets or sets the line-feed code for the document
@@ -140,6 +159,15 @@ namespace SharpXEdit
         internal bool IsUserModified => _isUserModified;
 
         internal InternalDocumentAccess IDA => _ida;
+
+        internal int SavedCaretColumn
+        {
+            get => _savedCaretColumn;
+            set
+            {
+                _savedCaretColumn = value;
+            }
+        }
 
         /// <summary>
         /// Gets or sets the text of the document
@@ -227,6 +255,21 @@ namespace SharpXEdit
         public void Replace( char oldChar, char newChar )
         {
             _strBuilder.Replace(oldChar, newChar);
+
+            _isUserModified = true;
+            CreateCache();
+            RaiseTextChanged();
+            RecreateManager();
+        }
+
+        /// <summary>
+        /// Removes the specified range of the document
+        /// </summary>
+        /// <param name="index">start index</param>
+        /// <param name="length">length</param>
+        public void Remove( int index, int length )
+        {
+            _strBuilder.Remove(index, length);
 
             _isUserModified = true;
             CreateCache();
