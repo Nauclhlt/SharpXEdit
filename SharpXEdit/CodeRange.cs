@@ -10,8 +10,27 @@ using System.IO;
 
 namespace SharpXEdit
 {
-    public sealed class CodeRange
+    internal struct CodeRange
     {
+        private string _text;
+        private CharStyle _style;
+        private int _xOffset;
+        private int _yOffset;
+        private Rectangle _drawingBounds;
 
+        public string Text => _text;
+        public CharStyle Style => _style;
+        public int XOffset => _xOffset;
+        public int YOffset => _yOffset;
+        public Rectangle DrawingBounds => _drawingBounds;
+
+        public CodeRange( string text, CharStyle style, int xOffset, int yOffset, int bwidth, int bheight )
+        {
+            _text = text;
+            _style = style;
+            _xOffset = xOffset;
+            _yOffset = yOffset;
+            _drawingBounds = new Rectangle(xOffset, yOffset, bwidth, bheight);
+        }
     }
 }

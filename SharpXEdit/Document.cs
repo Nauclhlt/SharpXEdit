@@ -15,6 +15,52 @@ namespace SharpXEdit
     /// </summary>
     public sealed class Document
     {
+        internal sealed class InternalDocumentAccess
+        {
+            private Document _document;
+
+            public InternalDocumentAccess( Document document )
+            {
+                _document = document;
+            }
+
+            public void Insert( int index, string value )
+            {
+                _document.Builder.Insert(index, value);
+
+                _document.CreateCache();
+                _document.RaiseTextChanged();
+                _document.RecreateManager();
+            }
+
+            public void Replace( string oldStr, string newStr )
+            {
+                _document.Builder.Replace(oldStr, newStr);
+
+                _document.CreateCache();
+                _document.RaiseTextChanged();
+                _document.RecreateManager();
+            }
+
+            public void Replace( char oldChar, char newChar )
+            {
+                _document.Builder.Replace(oldChar, newChar);
+
+                _document.CreateCache();
+                _document.RaiseTextChanged();
+                _document.RecreateManager();
+            }
+
+            public void BreakLine()
+            {
+                int index = _document._caret.GetCharIndex();
+
+                Insert(index, _document.LineFeedCode.GetCode());
+            }
+        }
+
+
+
         private static readonly int DefaultCapacity = 2 ^ 16;
 
         /// <summary>
@@ -32,9 +78,13 @@ namespace SharpXEdit
         private StringBuilder _strBuilder;
         private string _lastText;
         private DocumentCache _cache;
+        private DocumentScroll _scroll;
         private Caret _caret;
         private Caret _selectionStart;
         private SourceCodeManager _sourceCodeManager;
+        private SourceCodeColor _sourceCodeColor;
+        private InternalDocumentAccess _ida;
+        private bool _isUserModified = false;
 
         /// <summary>
         /// Gets or sets the line-feed code for the document
@@ -74,10 +124,23 @@ namespace SharpXEdit
         public Caret SelectionStart => _selectionStart;
 
         /// <summary>
+        /// Gets the scroll values of the document
+        /// </summary>
+        public DocumentScroll Scroll => _scroll;
+
+        /// <summary>
         /// Gets the <see cref="SourceCodeManager"/> object for the document
         /// </summary>
-        public SourceCodeManager SourceCodeManager => _sourceCodeManager;
-        
+        internal SourceCodeManager SourceCodeManager => _sourceCodeManager;
+
+        internal SourceCodeColor SourceCodeColor => _sourceCodeColor;
+
+        internal TextArea Parent => _parent;
+
+        internal bool IsUserModified => _isUserModified;
+
+        internal InternalDocumentAccess IDA => _ida;
+
         /// <summary>
         /// Gets or sets the text of the document
         /// </summary>
@@ -97,7 +160,11 @@ namespace SharpXEdit
                         _strBuilder = new StringBuilder(value, DefaultCapacity);
                     }
 
+
+                    _isUserModified = true;
                     CreateCache();
+                    RaiseTextChanged();
+                    RecreateManager();
                 }
             }
         }
@@ -108,7 +175,15 @@ namespace SharpXEdit
 
             _strBuilder = new StringBuilder(DefaultCapacity);
 
+            //Initialize properties
+            _caret = new Caret(_parent);
+            _selectionStart = new Caret(_parent);
+            _scroll = new DocumentScroll(this);
+            _sourceCodeColor = new SourceCodeColor();
+            _ida = new InternalDocumentAccess(this);
+
             CreateCache();
+            RecreateManager();
         }
 
         /// <summary>
@@ -123,8 +198,10 @@ namespace SharpXEdit
 
             _strBuilder.Insert(index, value);
 
+            _isUserModified = true;
             RaiseTextChanged();
             CreateCache();
+            RecreateManager();
         }
 
         /// <summary>
@@ -136,8 +213,10 @@ namespace SharpXEdit
         {
             _strBuilder.Replace(oldStr, newStr);
 
-            RaiseTextChanged();
+            _isUserModified = true;
             CreateCache();
+            RaiseTextChanged();
+            RecreateManager();
         }
 
         /// <summary>
@@ -149,8 +228,10 @@ namespace SharpXEdit
         {
             _strBuilder.Replace(oldChar, newChar);
 
-            RaiseTextChanged();
+            _isUserModified = true;
             CreateCache();
+            RaiseTextChanged();
+            RecreateManager();
         }
 
         /// <summary>
@@ -168,6 +249,13 @@ namespace SharpXEdit
             }
 
             return _strBuilder.ToString(index, length);
+        }
+
+        private void RecreateManager()
+        {
+            if (_sourceCodeManager is object)
+                _sourceCodeManager.Dispose();
+            _sourceCodeManager = new SourceCodeManager(this);
         }
 
         private void CreateCache()
