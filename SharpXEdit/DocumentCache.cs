@@ -8,6 +8,7 @@ using System.Runtime.InteropServices;
 using System.Collections;
 using System.IO;
 using System.ComponentModel;
+using System.Text.RegularExpressions;
 
 namespace SharpXEdit
 {
@@ -28,7 +29,15 @@ namespace SharpXEdit
             _parent = document;
 
             string code = document.LineFeedCode.GetCode();
-            string[] lines = document.Text.Split(code);
+            string[] lines;
+            if (code.Length == 1)
+            {
+                lines = document.Text.Split(char.Parse(code));
+            }
+            else
+            {
+                lines = document.Text.Split(code);
+            }
 
             _lines = lines;
             _lineCount = lines.Length;

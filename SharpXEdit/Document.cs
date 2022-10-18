@@ -7,6 +7,7 @@ using System.Reflection;
 using System.Runtime.InteropServices;
 using System.Collections;
 using System.IO;
+using System.Diagnostics;
 
 namespace SharpXEdit
 {
@@ -100,6 +101,7 @@ namespace SharpXEdit
         private Caret _caret;
         private Caret _selectionStart;
         private SourceCodeManager _sourceCodeManager;
+        private SelectionManager _selectionManager;
         private SourceCodeColor _sourceCodeColor;
         private InternalDocumentAccess _ida;
         private bool _isUserModified = false;
@@ -147,10 +149,9 @@ namespace SharpXEdit
         /// </summary>
         public DocumentScroll Scroll => _scroll;
 
-        /// <summary>
-        /// Gets the <see cref="SourceCodeManager"/> object for the document
-        /// </summary>
         internal SourceCodeManager SourceCodeManager => _sourceCodeManager;
+
+        internal SelectionManager SelectionManager => _selectionManager;
 
         internal SourceCodeColor SourceCodeColor => _sourceCodeColor;
 
@@ -209,6 +210,7 @@ namespace SharpXEdit
             _scroll = new DocumentScroll(this);
             _sourceCodeColor = new SourceCodeColor();
             _ida = new InternalDocumentAccess(this);
+            _selectionManager = new SelectionManager(this);
 
             CreateCache();
             RecreateManager();
@@ -294,6 +296,11 @@ namespace SharpXEdit
             return _strBuilder.ToString(index, length);
         }
 
+        internal void RemoveSelection()
+        {
+            _selectionStart = _caret.GetClone();
+        }
+
         private void RecreateManager()
         {
             if (_sourceCodeManager is object)
@@ -312,6 +319,11 @@ namespace SharpXEdit
         private void RaiseTextChanged()
         {
             TextChanged?.Invoke(this, EventArgs.Empty);
+        }
+
+        internal void RemoveModifiedFlag()
+        {
+            _isUserModified = false;
         }
     }
 }

@@ -86,5 +86,26 @@ namespace SharpXEdit
             _line += line;
             _column += column;
         }
+
+        /// <summary>
+        /// Gets an object which has its properties with same values as this object
+        /// </summary>
+        /// <returns></returns>
+        public Caret GetClone()
+        {
+            Caret clone = new Caret(_parent);
+            clone.Set(_line, _column);
+            return clone;
+        }
+
+        /// <summary>
+        /// Checks if the specified object indicates the same position as this object
+        /// </summary>
+        /// <param name="obj">obj to compare with</param>
+        /// <returns></returns>
+        public bool HasSamePosition( Caret obj )
+        {
+            return obj.Line == _line && obj.Column == _column;
+        }
     }
 }

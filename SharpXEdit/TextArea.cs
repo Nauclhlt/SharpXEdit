@@ -42,6 +42,9 @@ namespace SharpXEdit
         private Dictionary<int, List<CodeRange>> _codeRanges = new Dictionary<int, List<CodeRange>>();
         private TextAreaTheme _theme = new TextAreaTheme();
         private IntPtr _hImc = IntPtr.Zero;
+        private bool _mouseDown = false;
+        private int _scrollSpeed = 3;
+        
 
         public Document Document
         {
@@ -50,6 +53,9 @@ namespace SharpXEdit
             {
                 if (value is null)
                     return;
+
+                if (value.Parent != this)
+                    throw new ArgumentException("new document must have this object as its parent", nameof(value));
 
                 RemoveDocumentEvents(_document);
                 _document = value;
@@ -80,6 +86,15 @@ namespace SharpXEdit
             }
         }
 
+        public int ScrollSpeed
+        {
+            get => _scrollSpeed;
+            set
+            {
+                _scrollSpeed = Math.Max(1, value);
+            }
+        }
+
         public new int FontHeight => base.FontHeight;
 
         public TextArea()
@@ -90,52 +105,133 @@ namespace SharpXEdit
 
 
             _document = new Document(this);
-
+            _document.SourceCodeColor.SetRangeColorIfUndef(0, 5, Color.Blue);
 
             Cursor = Cursors.IBeam;
         }
 
+        protected override void OnPaintBackground(PaintEventArgs e)
+        {
+            base.OnPaintBackground(e);
+
+            e.Graphics.FillRectangle(BrushFactory.GetInstance(_theme.BackgroundColor), ClientRectangle);
+        }
 
         protected override void OnPaint(PaintEventArgs e)
         {
             base.OnPaint(e);
 
             Graphics g = e.Graphics;
+            Rectangle clipBounds = e.ClipRectangle;
+            bool redrawAll = e.ClipRectangle.Left == 0 && e.ClipRectangle.Top == 0 && e.ClipRectangle.Width == Width && e.ClipRectangle.Height == Height;
+
+            Rectangle caretBounds = new Rectangle(_document.SourceCodeManager.GetCaretPoint(_document.Caret), new Size(2, FontHeight));
+            bool caretInScreen = new Rectangle(0, 0, Width, Height).IntersectsWith(caretBounds);
+
+            if (caretInScreen && !clipBounds.Contains(caretBounds))
+            {
+                Invalidate();
+                return;
+            }
 
             if (_document.IsUserModified)
             {
                 CreateAllVisibleCodeRanges();
+                _document.RemoveModifiedFlag();
             }
 
             int lineStart = _document.SourceCodeManager.GetLineStart();
             int lineCount = _document.SourceCodeManager.GetVisibleLineCount();
+            int charIndex1 = _document.SelectionStart.GetCharIndex(), charIndex2 = _document.Caret.GetCharIndex();
+            int selectionBegin = Math.Min(charIndex1, charIndex2);
+            int selectionEnd = Math.Max(charIndex1, charIndex2);
+
+            if (_document.Caret.HasSamePosition(_document.SelectionStart))
+            {
+                selectionBegin = -1;
+                selectionEnd = -1;
+            }
+
+            //Console.WriteLine(selectionBegin + "," + selectionEnd);
+
+            using SolidBrush selectionBrush = new SolidBrush(Color.Aquamarine);
 
             for (int i = lineStart; i < lineStart + lineCount; i++)
             {
                 if (i < 0 || i >= _document.Cache.LineCount)
                     continue;
-                //string lineText = _document.Cache.GetLineText(i);
-                //int left = _document.SourceCodeManager.GetTextLeft();
-                //TextRenderer.DrawText(g, lineText, Font, new Point(left, i * FontHeight), Color.Black);
+
+                int lineHead = _document.Cache.GetLineHead(i);
+                string line = _document.Cache.GetLineText(i);
+                int lineLength = line.Length;
+                int lineEnd = lineHead + lineLength;
+                bool headFlag = Util.IsInRange(lineHead, selectionBegin, selectionEnd);
+                bool endFlag = Util.IsInRange(lineEnd, selectionBegin, selectionEnd);
+
+                //if (!headFlag && !endFlag)
+                //    goto selectionRenderingEnd;
+                if ( headFlag && endFlag )
+                {
+                    // The line is completely in the range of selection
+
+                    int lineWidth = _document.SourceCodeManager.GetWidth(line);
+                    lineWidth = Math.Clamp(lineWidth, Util.Shared.LineFeedSelectionWidth, Width - LineNumberWidth - Util.Shared.LeftMargin);
+
+                    g.FillRectangle(selectionBrush, LineNumberWidth + Util.Shared.LeftMargin, FontHeight * i - _document.Scroll.Vertical, lineWidth, FontHeight);
+                }
+                else
+                {
+                    // The line is partly in the range of selection
+                    int begin = 0;
+                    int len = 0;
+                    for (int j = 0; j < lineLength; j++)
+                    {
+                        int idx = lineHead + j;
+                        if (idx >= selectionBegin && idx <= selectionEnd)
+                        {
+                            begin = j;
+                            len = 0;
+                            for (int k = j + 1; k < lineLength + 1; k++)
+                            {
+                                int sidx = lineHead + k;
+                                if (sidx < selectionBegin || sidx > selectionEnd)
+                                {
+                                    break;
+                                }
+                                len++;
+                            }
+                            break;
+                        }
+                    }
+
+                    g.FillRectangle(selectionBrush, LineNumberWidth + Util.Shared.LeftMargin + _document.SourceCodeManager.GetWidth(line.Substring(0, begin)), FontHeight * i - _document.Scroll.Vertical, _document.SourceCodeManager.GetWidth(line.Substring(begin, len)), FontHeight);
+                }
+
+                selectionRenderingEnd:
+
 
                 if (_codeRanges.TryGetValue(i, out List<CodeRange> lineCodeRanges))
                 {
                     for (int j = 0; j < lineCodeRanges.Count; j++)
                     {
                         CodeRange codeRange = lineCodeRanges[j];
-                        TextRenderer.DrawText(g, codeRange.Text, Font, new Point(codeRange.XOffset - _document.Scroll.Horizontal, codeRange.YOffset - _document.Scroll.Vertical), codeRange.Style.Color, Util.Shared.TextFormatFlags);
+                        Rectangle rect = codeRange.DrawingBounds;
+                        // Scroll conversion
+                        rect = new Rectangle(rect.X - _document.Scroll.Horizontal, rect.Y - _document.Scroll.Vertical, rect.Width, rect.Height);
+                        if (clipBounds.IntersectsWith(rect))
+                            TextRenderer.DrawText(g, codeRange.Text, Font, new Point(codeRange.XOffset - _document.Scroll.Horizontal, codeRange.YOffset - _document.Scroll.Vertical), codeRange.Style.Color, Util.Shared.TextFormatFlags);
                     }
                 }
             }
 
             //Draw caret
             {
-                Point point = _document.SourceCodeManager.GetCaretPoint(_document.Caret);
                 SolidBrush brush = BrushFactory.GetInstance(_theme.CaretColor);
-                g.FillRectangle(brush, point.X, point.Y, 2, FontHeight);
+                g.FillRectangle(brush, caretBounds);
             }
 
-            RenderLineNumbers(g);
+            if (redrawAll)
+                RenderLineNumbers(g);
         }
 
         private void RenderLineNumbers( Graphics g )
@@ -153,11 +249,11 @@ namespace SharpXEdit
 
                 string text = (i + 1).ToString();
                 int w = _document.SourceCodeManager.GetWidth(text);
-                TextRenderer.DrawText(g, text, Font, new Point(_lineNumberWidth - w - 2, FontHeight * i - _document.Scroll.Vertical), i == _document.Caret.Line ? _theme.CaretLineNumberColor : _theme.LineNumberColor);
+                TextRenderer.DrawText(g, text, Font, new Point(LineNumberWidth - w - 8, FontHeight * i - _document.Scroll.Vertical), i == _document.Caret.Line ? _theme.CaretLineNumberColor : _theme.LineNumberColor);
             }
         }
 
-        private void CreateLineCodeRanges( int lineIndex )
+        private unsafe void CreateLineCodeRanges( int lineIndex )
         {
             if (lineIndex < 0 || lineIndex >= _document.Cache.LineCount)
                 return;
@@ -178,9 +274,15 @@ namespace SharpXEdit
                 int len = 1;
                 for (int j = i + 1; j < length; j++)
                 {
+                    fixed(char* ptr = line)
+                    {
+                        if (line[j] == ' ')
+                            goto end;
+                    }
                     if (exist != _document.SourceCodeColor.ExistColor(head + j) || _document.SourceCodeColor.GetColor(head + j) != style)
                         break;
 
+                    end:
                     len++;
                 }
 
@@ -208,6 +310,29 @@ namespace SharpXEdit
             }
         }
 
+        private void FillEmptyCodeRanges()
+        {
+            int start = _document.SourceCodeManager.GetLineStart();
+            int count = _document.SourceCodeManager.GetVisibleLineCount();
+
+            for (int i = start; i < start + count; i++)
+            {
+                if (!_codeRanges.ContainsKey(i))
+                    CreateLineCodeRanges(i);
+            }
+        }
+
+        private void ShiftCodeRangesV( int offset )
+        {
+            foreach ( List<CodeRange> list in _codeRanges.Values )
+            {
+                for (int i = 0; i < list.Count; i++)
+                {
+                    list[i].ShiftY(offset);
+                }
+            }
+        }
+
         private void RegisterCodeRanges( int line, List<CodeRange> codeRanges )
         {
             if (_codeRanges.ContainsKey(line))
@@ -222,10 +347,12 @@ namespace SharpXEdit
 
         private void ProcessIMECharInput( char character )
         {
+            Console.Write(character);
             if (character == '\r')
             {
                 BreakLine();
                 _document.Caret.Set(_document.Caret.Line + 1, 0);
+                _document.RemoveSelection();
                 CreateAllVisibleCodeRanges();
                 Invalidate();
                 return;
@@ -244,6 +371,7 @@ namespace SharpXEdit
                         string prevLine = _document.Cache.GetLineText(_document.Caret.Line - 1);
                         _document.IDA.Remove(charIndex - code.Length, code.Length);
                         _document.Caret.Set(_document.Caret.Line - 1, prevLine.Length);
+                        _document.RemoveSelection();
 
                         CreateAllVisibleCodeRanges();
                         Invalidate();
@@ -253,16 +381,24 @@ namespace SharpXEdit
                 {
                     _document.IDA.Remove(charIndex - 1, 1);
                     _document.Caret.Offset(0, -1);
+                    _document.RemoveSelection();
 
                     UpdateLine(_document.Caret.Line);
                 }
 
                 return;
             }
+
+            if (character == '\t')
+            {
+                Console.Write("TAB");
+                return;
+            }
             
             _document.IDA.Insert(charIndex, character);
 
             _document.Caret.Offset(0, 1);
+            _document.RemoveSelection();
 
             UpdateLine(_document.Caret.Line);
         }
@@ -274,7 +410,19 @@ namespace SharpXEdit
 
         private void InvisualInput( string value )
         {
+            string[] lines = value.Replace("\r\n", "\n").Replace('\r', '\n').Split('\n');
 
+            for (int i = 0; i < lines.Length; i++)
+            {
+                _document.IDA.Insert(_document.Caret.GetCharIndex(), lines[i]);
+                _document.Caret.Offset(0, lines[i].Length);
+                CreateLineCodeRanges(_document.Caret.Line);
+
+                if (i != lines.Length - 1)
+                    BreakLine();
+            }
+
+            Invalidate();
         }
 
         private void BreakLine()
@@ -285,7 +433,90 @@ namespace SharpXEdit
         private void UpdateLine( int lineIndex )
         {
             CreateLineCodeRanges(lineIndex);
-            Invalidate();
+            InvalidateLine(lineIndex);
+        }
+
+        private void InvalidateLine( int lineIndex )
+        {
+            if (lineIndex < 0 || lineIndex >= _document.Cache.LineCount)
+                return;
+
+            Invalidate(_document.SourceCodeManager.GetLineRefreshBounds(lineIndex));
+        }
+
+        protected override void OnKeyDown(KeyEventArgs e)
+        {
+            if ( e.KeyCode == Keys.Delete )
+            {
+                int charIndex = _document.Caret.GetCharIndex();
+                if (charIndex < _document.Length - 1)
+                {
+                    _document.IDA.Remove(charIndex, 1);
+                    CreateAllVisibleCodeRanges();
+                    Invalidate();
+                }
+            }
+
+            base.OnKeyDown(e);
+        }
+
+        protected override void OnMouseWheel(MouseEventArgs e)
+        {
+            base.OnMouseWheel(e);
+
+            int delta = e.Delta;
+
+            if (delta != 0)
+            {
+                if (delta < 0)
+                {
+                    //Scroll down
+
+                    _document.Scroll.Vertical += FontHeight * ScrollSpeed;
+                }
+                else
+                {
+                    //Scroll up
+                    _document.Scroll.Vertical -= FontHeight * ScrollSpeed;
+                }
+
+                FillEmptyCodeRanges();
+
+                Invalidate();
+            }
+        }
+
+        protected override void OnMouseDown(MouseEventArgs e)
+        {
+            base.OnMouseDown(e);
+
+            if (!_mouseDown && e.Button == MouseButtons.Left)
+            {
+                _document.SelectionManager.MouseSelect(e.Location);
+                _mouseDown = true;
+                Invalidate();
+            }
+        }
+
+        protected override void OnMouseMove(MouseEventArgs e)
+        {
+            base.OnMouseMove(e);
+
+            if (_mouseDown)
+            {
+                _document.SelectionManager.MouseDrag(e.Location);
+                Invalidate();
+            }
+        }
+
+        protected override void OnMouseUp(MouseEventArgs e)
+        {
+            base.OnMouseUp(e);
+
+            if (e.Button == MouseButtons.Left)
+            {
+                _mouseDown = false;
+            }
         }
 
         protected override bool ProcessCmdKey(ref Message msg, Keys keyData)
@@ -309,16 +540,24 @@ namespace SharpXEdit
                 if (_document.Caret.Column == line.Length)
                 {
                     if (_document.Caret.Line < _document.Cache.LineCount - 1)
+                    {
                         _document.Caret.Set(_document.Caret.Line + 1, 0);
+                        Invalidate();
+                    }
                 }
                 else
                 {
                     _document.Caret.Offset(0, 1);
+                    InvalidateLine(_document.Caret.Line);
+                }
+
+                if ((modifiers & Keys.Shift) != Keys.Shift)
+                {
+                    _document.RemoveSelection();
                 }
 
                 _document.SavedCaretColumn = _document.Caret.Column;
-
-                Invalidate();
+                
                 return true;
             }
 
@@ -327,16 +566,24 @@ namespace SharpXEdit
                 if (_document.Caret.Column == 0)
                 {
                     if (_document.Caret.Line > 0)
+                    {
                         _document.Caret.Set(_document.Caret.Line - 1, _document.Cache.GetLineText(_document.Caret.Line - 1).Length);
+                        Invalidate();
+                    }
                 }
                 else
                 {
                     _document.Caret.Offset(0, -1);
+                    InvalidateLine(_document.Caret.Line);
                 }
 
                 _document.SavedCaretColumn = _document.Caret.Column;
 
-                Invalidate();
+                if ((modifiers & Keys.Shift) != Keys.Shift)
+                {
+                    _document.RemoveSelection();
+                }
+
                 return true;
             }
 
@@ -357,6 +604,11 @@ namespace SharpXEdit
                     Invalidate();
                 }
 
+                if ((modifiers & Keys.Shift) != Keys.Shift)
+                {
+                    _document.RemoveSelection();
+                }
+
                 return true;
             }
 
@@ -375,6 +627,11 @@ namespace SharpXEdit
                         _document.Caret.Set(_document.Caret.Line - 1, Math.Min(prevLine.Length, _document.SavedCaretColumn));
 
                     Invalidate();
+                }
+
+                if ((modifiers & Keys.Shift) != Keys.Shift)
+                {
+                    _document.RemoveSelection();
                 }
 
                 return true;
@@ -422,6 +679,14 @@ namespace SharpXEdit
             }
 
             base.Dispose(disposing);
+        }
+
+        protected override void OnSizeChanged(EventArgs e)
+        {
+            base.OnSizeChanged(e);
+
+            CreateAllVisibleCodeRanges();
+            Invalidate();
         }
 
         #region IME

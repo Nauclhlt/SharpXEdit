@@ -28,24 +28,21 @@ namespace SharpXEdit
             _textArea = document.Parent;
             _document = document;
 
-            _graphics = _textArea.CreateGraphics();
+            //_graphics = _textArea.CreateGraphics();
         }
 
         public int GetWidth( string value )
         {
-            int aWidth = TextRenderer.MeasureText(_graphics, "A", _textArea.Font, new Size(int.MaxValue, int.MaxValue), Util.Shared.TextFormatFlags).Width;
-            int width = TextRenderer.MeasureText(_graphics, "A" + value + "A", _textArea.Font, new Size(int.MaxValue, int.MaxValue), Util.Shared.TextFormatFlags).Width;
-
-            return width - (aWidth << 1);
+            return GetWidth((ReadOnlySpan<char>)value);
         }
 
         public int GetWidth( ReadOnlySpan<char> span )
         {
-            string value = new string(span);
+            //string value = new string(span);
             //int aWidth = TextRenderer.MeasureText(_graphics, "A", _textArea.Font, new Size(int.MaxValue, int.MaxValue), Util.Shared.TextFormatFlags).Width;
             //int width = TextRenderer.MeasureText(_graphics, "A" + value + "A", _textArea.Font, new Size(int.MaxValue, int.MaxValue), Util.Shared.TextFormatFlags).Width;
 
-            return TextRenderer.MeasureText(value, _textArea.Font, new Size(int.MaxValue, int.MaxValue), Util.Shared.TextFormatFlags).Width;
+            return TextRenderer.MeasureText(span, _textArea.Font, new Size(int.MaxValue, int.MaxValue), Util.Shared.TextFormatFlags).Width;
         }
 
         public int GetLineTop( int lineIndex )
@@ -78,7 +75,7 @@ namespace SharpXEdit
 
         public Rectangle GetLineRefreshBounds(int line)
         {
-            return new Rectangle(_textArea.LineNumberWidth, line * _textArea.FontHeight - _document.Scroll.Vertical, _textArea.Width - _textArea.LineNumberWidth, _textArea.FontHeight);
+            return new Rectangle(_textArea.LineNumberWidth + Util.Shared.LeftMargin, line * _textArea.FontHeight - _document.Scroll.Vertical, _textArea.Width - _textArea.LineNumberWidth - Util.Shared.LeftMargin, _textArea.FontHeight);
         }
 
         /// <summary>
@@ -96,7 +93,7 @@ namespace SharpXEdit
             {
                 if (disposing)
                 {
-                    _graphics.Dispose();
+                    _graphics?.Dispose();
                 }
 
                 _disposed = true;

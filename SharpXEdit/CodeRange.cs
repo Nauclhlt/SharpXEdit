@@ -32,5 +32,10 @@ namespace SharpXEdit
             _yOffset = yOffset;
             _drawingBounds = new Rectangle(xOffset, yOffset, bwidth, bheight);
         }
+
+        public void ShiftY( int offset )
+        {
+            _yOffset += offset;
+        }
     }
 }

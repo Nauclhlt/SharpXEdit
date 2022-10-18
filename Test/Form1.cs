@@ -1,4 +1,6 @@
 using SharpXEdit;
+using System.Configuration;
+using System.Diagnostics;
 
 namespace Test
 {
@@ -17,6 +19,7 @@ namespace Test
             c.Font = new Font("Consolas", 22);
             c.Document.Text = File.ReadAllText(@"C:\workspace\CSharp\VsProjects\XEdit\XEdit\CSharpCodeAnalyzer.cs");
             c.Dock = DockStyle.Fill;
+            c.Theme = new TextAreaTheme() { TextColor = Color.Magenta, BackgroundColor = Color.Black, CaretColor = Color.White };
             Controls.Add(c);
         }
     }
