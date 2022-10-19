@@ -19,7 +19,12 @@ namespace Test
             c.Font = new Font("Consolas", 22);
             c.Document.Text = File.ReadAllText(@"C:\workspace\CSharp\VsProjects\XEdit\XEdit\CSharpCodeAnalyzer.cs");
             c.Dock = DockStyle.Fill;
-            c.Theme = new TextAreaTheme() { TextColor = Color.Magenta, BackgroundColor = Color.Black, CaretColor = Color.White };
+            c.Theme = new TextAreaTheme() { TextColor = Color.White, BackgroundColor = Color.Black, CaretColor = Color.White, LineNumberBackgroundColor = Color.Black, CaretLineNumberBackgroundColor = Color.Black, CaretLineNumberColor = Color.Lime, LineNumberColor = Color.Lime };
+            c.Highlighters.Add(new KeywordsHighlighter(new CharStyle(Color.Aqua, EditorFontStyle.Bold), true, "using", "public", "static", "void", "string", "int", "if", "else", "while", "for", "class"));
+            c.Highlighters.Add(new QuoteHighlighter(Color.Yellow, false, "\"", "\""));
+            c.Highlighters.Add(new HeaderHighlighter(Color.Green, "//"));
+            c.Highlighters.Add(new QuoteHighlighter(Color.Magenta, false, "#include<", ">", self:false, outStyle: Color.Yellow));
+            c.Highlighters.Add(new QuoteHighlighter(Color.Magenta, false, "using ", ";", self: false));
             Controls.Add(c);
         }
     }

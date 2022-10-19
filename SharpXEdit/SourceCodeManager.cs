@@ -21,7 +21,6 @@ namespace SharpXEdit
         private TextArea _textArea;
         private Document _document;
         private bool _disposed = false;
-        private Graphics _graphics;
 
         internal SourceCodeManager( Document document )
         {
@@ -33,16 +32,13 @@ namespace SharpXEdit
 
         public int GetWidth( string value )
         {
-            return GetWidth((ReadOnlySpan<char>)value);
+            value = value.Replace("\t", "    ");
+            return TextRenderer.MeasureText(value, _textArea.Font, new Size(int.MaxValue, int.MaxValue), Util.Shared.TextFormatFlags).Width;
         }
 
         public int GetWidth( ReadOnlySpan<char> span )
         {
-            //string value = new string(span);
-            //int aWidth = TextRenderer.MeasureText(_graphics, "A", _textArea.Font, new Size(int.MaxValue, int.MaxValue), Util.Shared.TextFormatFlags).Width;
-            //int width = TextRenderer.MeasureText(_graphics, "A" + value + "A", _textArea.Font, new Size(int.MaxValue, int.MaxValue), Util.Shared.TextFormatFlags).Width;
-
-            return TextRenderer.MeasureText(span, _textArea.Font, new Size(int.MaxValue, int.MaxValue), Util.Shared.TextFormatFlags).Width;
+            return GetWidth(new string(span));
         }
 
         public int GetLineTop( int lineIndex )
@@ -93,7 +89,6 @@ namespace SharpXEdit
             {
                 if (disposing)
                 {
-                    _graphics?.Dispose();
                 }
 
                 _disposed = true;

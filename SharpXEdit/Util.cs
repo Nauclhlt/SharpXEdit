@@ -23,6 +23,11 @@ namespace SharpXEdit
             public static readonly TextFormatFlags TextFormatFlags = TextFormatFlags.NoPadding | TextFormatFlags.NoClipping | TextFormatFlags.NoPrefix | TextFormatFlags.SingleLine;
             public static readonly int LeftMargin = 10;
             public static readonly int LineFeedSelectionWidth = 10;
+            public static readonly HashSet<char> WorkBreaks = new HashSet<char>()
+            {
+                ',', '.', '/', '(', ')', '!', '"', '\'', '#', '$', '&', '=', '-', '^', '~', '|', '\\',
+                '[', ']', '{', '}', ';', '+', '*', ':', '<', '>', '?', '_', ' ', '\t'
+            };
         }
 
         public static unsafe char PtrChar( this string str, int index )
@@ -39,6 +44,40 @@ namespace SharpXEdit
         public static bool IsInRange( int value, int begin, int end )
         {
             return value >= begin && value <= end;
+        }
+
+        public static string GetIndentValue( string line )
+        {
+            unsafe
+            {
+                int tabs = 0;
+                int spaces = 0;
+                fixed(char* ptr = line)
+                {
+                    for (int i = 0; i < line.Length; i++)
+                    {
+                        if (ptr[i] == '\t')
+                        {
+                            tabs++;
+                            continue;
+                        }
+                        if (ptr[i] == ' ')
+                        {
+                            spaces++;
+                            continue;
+                        }
+
+                        break;
+                    }
+                }
+
+                return new string(' ', spaces) + new string('\t', tabs);
+            }
+        }
+
+        public static bool IsWordBreak( char c )
+        {
+            return Shared.WorkBreaks.Contains(c);
         }
     }
 }

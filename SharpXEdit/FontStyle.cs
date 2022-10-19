@@ -13,7 +13,7 @@ namespace SharpXEdit
     /// <summary>
     /// Represents font styles
     /// </summary>
-    public enum FontStyle
+    public enum EditorFontStyle
     {
         /// <summary>
         /// Normal font

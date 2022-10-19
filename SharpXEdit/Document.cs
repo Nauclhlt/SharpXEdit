@@ -70,6 +70,21 @@ namespace SharpXEdit
                 _document.RecreateManager();
             }
 
+            public void RemoveSelectedRange()
+            {
+                if (_document.TextSelected)
+                {
+                    int charIndex1 = _document.Caret.GetCharIndex(), charIndex2 = _document.SelectionStart.GetCharIndex();
+                    int begin = Math.Min(charIndex1, charIndex2);
+                    int end = Math.Max(charIndex1, charIndex2);
+
+                    _document.IDA.Remove(begin, end - begin);
+
+                    _document.Caret.SetCharIndex(begin);
+                    _document.RemoveSelection();
+                }
+            }
+
             public void BreakLine()
             {
                 int index = _document._caret.GetCharIndex();
@@ -149,6 +164,11 @@ namespace SharpXEdit
         /// </summary>
         public DocumentScroll Scroll => _scroll;
 
+        /// <summary>
+        /// Gets the number of lines in the document
+        /// </summary>
+        public int LineCount => Cache.LineCount;
+
         internal SourceCodeManager SourceCodeManager => _sourceCodeManager;
 
         internal SelectionManager SelectionManager => _selectionManager;
@@ -160,6 +180,8 @@ namespace SharpXEdit
         internal bool IsUserModified => _isUserModified;
 
         internal InternalDocumentAccess IDA => _ida;
+
+        internal bool TextSelected => !_caret.HasSamePosition(_selectionStart);
 
         internal int SavedCaretColumn
         {
@@ -294,6 +316,34 @@ namespace SharpXEdit
             }
 
             return _strBuilder.ToString(index, length);
+        }
+
+        /// <summary>
+        /// Selects all text
+        /// </summary>
+        public void SelectAll()
+        {
+            _selectionStart.Set(0, 0);
+            _caret.Set(Cache.LineCount - 1, Cache.GetLineText(Cache.LineCount - 1).Length);
+        }
+
+        /// <summary>
+        /// Scrolls to the caret if it is not in the control
+        /// </summary>
+        public void ScrollToCaret()
+        {
+            int start = _sourceCodeManager.GetLineStart();
+            int count = _sourceCodeManager.GetVisibleLineCount();
+            int end = start + count;
+
+            if (_caret.Line < start)
+            {
+                _scroll.ScrollToLine(_caret.Line);
+            }
+            else if (_caret.Line > end)
+            {
+                _scroll.ScrollToLineBottom(_caret.Line);
+            }
         }
 
         internal void RemoveSelection()

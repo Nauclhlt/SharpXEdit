@@ -17,7 +17,7 @@ namespace SharpXEdit
     /// </summary>
     public struct CharStyle
     {
-        private FontStyle _fontStyle;
+        private EditorFontStyle _fontStyle;
         private Color _color;
 
         /// <summary>
@@ -27,14 +27,14 @@ namespace SharpXEdit
         /// <summary>
         /// Gets the font style
         /// </summary>
-        public FontStyle FontStyle => _fontStyle;
+        public EditorFontStyle FontStyle => _fontStyle;
 
         /// <summary>
         /// Initializes new structure with the specified color and font style
         /// </summary>
         /// <param name="color">color</param>
         /// <param name="style">font style</param>
-        public CharStyle( Color color, FontStyle style )
+        public CharStyle( Color color, EditorFontStyle style )
         {
             _color = color;
             _fontStyle = style;
@@ -46,7 +46,7 @@ namespace SharpXEdit
         /// <param name="source"></param>
         public static implicit operator CharStyle(Color source)
         {
-            return new CharStyle(source, FontStyle.Normal);
+            return new CharStyle(source, EditorFontStyle.Normal);
         }
 
         /// <summary>

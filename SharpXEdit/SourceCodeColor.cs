@@ -58,7 +58,7 @@ namespace SharpXEdit
                 if (_colors.TryGetValue(charIndex, out CharStyle CharStyle))
                     return CharStyle;
                 else
-                    return new CharStyle(Color.White, FontStyle.Normal);
+                    return new CharStyle(Color.White, EditorFontStyle.Normal);
             }
         }
 
@@ -117,6 +117,22 @@ namespace SharpXEdit
             for (int i = charIndex; i < charIndex + length; i++)
             {
                 SetColorIfUndef(i, charColor);
+            }
+        }
+
+        /// <summary>
+        /// Sets the specified range of the styles if they are undefined and their metadata is not the specified metadata
+        /// </summary>
+        /// <param name="charIndex">character index</param>
+        /// <param name="length">length of the range</param>
+        /// <param name="metaCompare">metadata value to compare with</param>
+        /// <param name="charColor">character style</param>
+        public void SetRangeColorIfUndefMetaIsNot( int charIndex, int length, int metaCompare, CharStyle charColor )
+        {
+            for (int i = charIndex; i < charIndex + length; i++)
+            {
+                if (GetMeta(i) != metaCompare)
+                    SetColorIfUndef(i, charColor);
             }
         }
 

@@ -36,6 +36,26 @@ namespace SharpXEdit
         }
 
         /// <summary>
+        /// Scrolls to the specified line
+        /// </summary>
+        /// <param name="lineIndex">line index</param>
+        public void ScrollToLine( int lineIndex )
+        {
+            Vertical = _document.Parent.FontHeight * lineIndex;
+        }
+
+        /// <summary>
+        /// Scrolls to the specified line
+        /// </summary>
+        /// <param name="lineIndex">line index</param>
+        public void ScrollToLineBottom( int lineIndex )
+        {
+            int count = _document.SourceCodeManager.GetVisibleLineCount();
+            int upHeight = (count - 4) * _document.Parent.FontHeight;
+            Vertical = _document.Parent.FontHeight * lineIndex - upHeight;
+        }
+
+        /// <summary>
         /// Gets or sets the vertical scroll value
         /// </summary>
         public int Vertical

@@ -18,6 +18,7 @@ using System.Drawing.Imaging;
 using System.Windows.Forms.Design;
 using static SharpXEdit.TextArea;
 using System.Windows.Forms.VisualStyles;
+using static System.Windows.Forms.VisualStyles.VisualStyleElement.TextBox;
 
 #pragma warning disable CS1591
 
@@ -44,7 +45,13 @@ namespace SharpXEdit
         private IntPtr _hImc = IntPtr.Zero;
         private bool _mouseDown = false;
         private int _scrollSpeed = 3;
-        
+        private HighlighterCollection _highlighters = new HighlighterCollection();
+
+
+        private Font _boldFont;
+        private Font _italicFont;
+        private Font _underlineFont;
+        private Font _strikeoutFont;
 
         public Document Document
         {
@@ -95,6 +102,28 @@ namespace SharpXEdit
             }
         }
 
+        public HighlighterCollection Highlighters
+        {
+            get => _highlighters;
+        }
+
+        public new Font Font
+        {
+            get => base.Font;
+            set
+            {
+                _boldFont?.Dispose();
+                _italicFont?.Dispose();
+                _strikeoutFont?.Dispose();
+                _underlineFont?.Dispose();
+                base.Font = value;
+                _boldFont = new Font(value, FontStyle.Bold);
+                _italicFont = new Font(value, FontStyle.Italic);
+                _strikeoutFont = new Font(value, FontStyle.Strikeout);
+                _underlineFont = new Font(value, FontStyle.Underline);
+            }
+        }
+
         public new int FontHeight => base.FontHeight;
 
         public TextArea()
@@ -105,7 +134,6 @@ namespace SharpXEdit
 
 
             _document = new Document(this);
-            _document.SourceCodeColor.SetRangeColorIfUndef(0, 5, Color.Blue);
 
             Cursor = Cursors.IBeam;
         }
@@ -207,8 +235,6 @@ namespace SharpXEdit
                     g.FillRectangle(selectionBrush, LineNumberWidth + Util.Shared.LeftMargin + _document.SourceCodeManager.GetWidth(line.Substring(0, begin)), FontHeight * i - _document.Scroll.Vertical, _document.SourceCodeManager.GetWidth(line.Substring(begin, len)), FontHeight);
                 }
 
-                selectionRenderingEnd:
-
 
                 if (_codeRanges.TryGetValue(i, out List<CodeRange> lineCodeRanges))
                 {
@@ -219,7 +245,7 @@ namespace SharpXEdit
                         // Scroll conversion
                         rect = new Rectangle(rect.X - _document.Scroll.Horizontal, rect.Y - _document.Scroll.Vertical, rect.Width, rect.Height);
                         if (clipBounds.IntersectsWith(rect))
-                            TextRenderer.DrawText(g, codeRange.Text, Font, new Point(codeRange.XOffset - _document.Scroll.Horizontal, codeRange.YOffset - _document.Scroll.Vertical), codeRange.Style.Color, Util.Shared.TextFormatFlags);
+                            DrawText(g, codeRange.Text, GetFont(codeRange.Style.FontStyle), new Point(codeRange.XOffset - _document.Scroll.Horizontal, codeRange.YOffset - _document.Scroll.Vertical), codeRange.Style.Color, Util.Shared.TextFormatFlags);
                     }
                 }
             }
@@ -251,6 +277,26 @@ namespace SharpXEdit
                 int w = _document.SourceCodeManager.GetWidth(text);
                 TextRenderer.DrawText(g, text, Font, new Point(LineNumberWidth - w - 8, FontHeight * i - _document.Scroll.Vertical), i == _document.Caret.Line ? _theme.CaretLineNumberColor : _theme.LineNumberColor);
             }
+        }
+
+        private void DrawText( Graphics g, string text, Font font, Point point, Color foreColor, TextFormatFlags flags )
+        {
+            text = text.Replace("\t", "    ");
+            TextRenderer.DrawText(g, text, font, point, foreColor, flags);
+        }
+
+        private Font GetFont( EditorFontStyle style )
+        {
+            if (style == EditorFontStyle.Bold)
+                return _boldFont;
+            if (style == EditorFontStyle.Italic)
+                return _italicFont;
+            if (style == EditorFontStyle.Strikeout)
+                return _strikeoutFont;
+            if (style == EditorFontStyle.Underline)
+                return _underlineFont;
+
+            return base.Font;
         }
 
         private unsafe void CreateLineCodeRanges( int lineIndex )
@@ -289,7 +335,7 @@ namespace SharpXEdit
                 string range = line.Substring(i, len);
                 int w = _document.SourceCodeManager.GetWidth(range);
 
-                ranges.Add(new CodeRange(range, exist ? style : new CharStyle(_theme.TextColor, FontStyle.Normal), left + leftOffset, FontHeight * lineIndex, w, FontHeight));
+                ranges.Add(new CodeRange(range, exist ? style : new CharStyle(_theme.TextColor, EditorFontStyle.Normal), left + leftOffset, FontHeight * lineIndex, w, FontHeight));
 
                 leftOffset += w;
 
@@ -318,7 +364,10 @@ namespace SharpXEdit
             for (int i = start; i < start + count; i++)
             {
                 if (!_codeRanges.ContainsKey(i))
+                {
+                    RunHighlightLine(i);
                     CreateLineCodeRanges(i);
+                }
             }
         }
 
@@ -345,61 +394,133 @@ namespace SharpXEdit
             }
         }
 
+        private void RunHighlight()
+        {
+            int start = _document.SourceCodeManager.GetLineStart();
+            int count = _document.SourceCodeManager.GetVisibleLineCount();
+
+            _document.SourceCodeColor.ClearColor();
+            Parallel.For(0, _highlighters.Count, i =>
+            {
+                if (_highlighters[i].Final)
+                    return;
+                _highlighters[i].Run(_document, start, start + count + 1);
+            });
+
+            Parallel.For(0, _highlighters.Count, i =>
+            {
+                if (!_highlighters[i].Final)
+                    return;
+                _highlighters[i].Run(_document, start, start + count + 1);
+            });
+        }
+
+        private void RunHighlightLine( int line )
+        {
+            if (line < 0 || line >= _document.Cache.LineCount)
+                return;
+
+            _document.SourceCodeColor.ClearColor();
+            Parallel.For(0, _highlighters.Count, i =>
+            {
+                if (_highlighters[i].Final)
+                    return;
+                _highlighters[i].Run(_document, line, line + 1);
+            });
+
+            Parallel.For(0, _highlighters.Count, i =>
+            {
+                if (!_highlighters[i].Final)
+                    return;
+                _highlighters[i].Run(_document, line, line + 1);
+            });
+        }
+
         private void ProcessIMECharInput( char character )
         {
-            Console.Write(character);
             if (character == '\r')
             {
+                _document.IDA.RemoveSelectedRange();
+
+                string line = _document.Cache.GetLineText(_document.Caret.Line);
                 BreakLine();
                 _document.Caret.Set(_document.Caret.Line + 1, 0);
                 _document.RemoveSelection();
+                string indent = Util.GetIndentValue(line);
+                _document.IDA.Insert(_document.Caret.GetCharIndex(), indent);
+                _document.Caret.Offset(0, indent.Length);
+                _document.RemoveSelection();
+                RunHighlight();
                 CreateAllVisibleCodeRanges();
                 Invalidate();
                 return;
             }
 
-            int charIndex = _document.Caret.GetCharIndex();
 
+            int charIndex = _document.Caret.GetCharIndex();
             if (character == '\b')
             {
-                if (_document.Caret.Column == 0)
+                if (_document.TextSelected)
                 {
-                    // Delete line
-                    if (_document.Caret.Line > 0)
-                    {
-                        string code = _document.LineFeedCode.GetCode();
-                        string prevLine = _document.Cache.GetLineText(_document.Caret.Line - 1);
-                        _document.IDA.Remove(charIndex - code.Length, code.Length);
-                        _document.Caret.Set(_document.Caret.Line - 1, prevLine.Length);
-                        _document.RemoveSelection();
+                    int charIndex1 = _document.Caret.GetCharIndex(), charIndex2 = _document.SelectionStart.GetCharIndex();
+                    int begin = Math.Min(charIndex1, charIndex2);
+                    int end = Math.Max(charIndex1, charIndex2);
 
-                        CreateAllVisibleCodeRanges();
-                        Invalidate();
-                    }
+                    _document.IDA.Remove(begin, end - begin);
+
+                    _document.Caret.SetCharIndex(begin);
+                    _document.RemoveSelection();
+                    _document.ScrollToCaret();
+
+                    RunHighlight();
+                    CreateAllVisibleCodeRanges();
+                    Invalidate();
                 }
                 else
                 {
-                    _document.IDA.Remove(charIndex - 1, 1);
-                    _document.Caret.Offset(0, -1);
-                    _document.RemoveSelection();
+                    if (_document.Caret.Column == 0)
+                    {
+                        // Delete line
+                        if (_document.Caret.Line > 0)
+                        {
+                            string code = _document.LineFeedCode.GetCode();
+                            string prevLine = _document.Cache.GetLineText(_document.Caret.Line - 1);
+                            _document.IDA.Remove(charIndex - code.Length, code.Length);
+                            _document.Caret.Set(_document.Caret.Line - 1, prevLine.Length);
+                            _document.RemoveSelection();
+                            _document.ScrollToCaret();
 
-                    UpdateLine(_document.Caret.Line);
+                            RunHighlight();
+                            CreateAllVisibleCodeRanges();
+                            Invalidate();
+                        }
+                    }
+                    else
+                    {
+                        _document.IDA.Remove(charIndex - 1, 1);
+                        _document.Caret.Offset(0, -1);
+                        _document.RemoveSelection();
+                        _document.ScrollToCaret();
+
+                        RunHighlightLine(_document.Caret.Line);
+                        UpdateLine(_document.Caret.Line);
+                    }
                 }
-
+                
                 return;
             }
 
-            if (character == '\t')
-            {
-                Console.Write("TAB");
-                return;
-            }
             
+            _document.IDA.RemoveSelectedRange();
+            charIndex = _document.Caret.GetCharIndex();
+
             _document.IDA.Insert(charIndex, character);
 
             _document.Caret.Offset(0, 1);
             _document.RemoveSelection();
+            _document.ScrollToCaret();
 
+            RunHighlightLine(_document.Caret.Line);
             UpdateLine(_document.Caret.Line);
         }
 
@@ -421,6 +542,9 @@ namespace SharpXEdit
                 if (i != lines.Length - 1)
                     BreakLine();
             }
+
+            _document.RemoveSelection();
+            _document.ScrollToCaret();
 
             Invalidate();
         }
@@ -448,13 +572,109 @@ namespace SharpXEdit
         {
             if ( e.KeyCode == Keys.Delete )
             {
-                int charIndex = _document.Caret.GetCharIndex();
-                if (charIndex < _document.Length - 1)
+                if (_document.TextSelected)
                 {
-                    _document.IDA.Remove(charIndex, 1);
+                    int charIndex1 = _document.Caret.GetCharIndex(), charIndex2 = _document.SelectionStart.GetCharIndex();
+                    int begin = Math.Min(charIndex1, charIndex2);
+                    int end = Math.Max(charIndex1, charIndex2);
+
+                    _document.IDA.Remove(begin, end - begin);
+
+                    _document.Caret.SetCharIndex(begin);
+                    _document.RemoveSelection();
+                    _document.ScrollToCaret();
+
+                    RunHighlight();
                     CreateAllVisibleCodeRanges();
                     Invalidate();
                 }
+                else
+                {
+                    int charIndex = _document.Caret.GetCharIndex();
+                    if (charIndex < _document.Length - 1)
+                    {
+                        string line = _document.Cache.GetLineText(_document.Caret.Line);
+                        if (_document.Caret.Column == line.Length)
+                        {
+                            _document.IDA.Remove(charIndex, _document.LineFeedCode.GetCode().Length);
+                            RunHighlight();
+                            CreateAllVisibleCodeRanges();
+                            Invalidate();
+                        }
+                        else
+                        {
+                            _document.IDA.Remove(charIndex, 1);
+                            RunHighlightLine(_document.Caret.Line);
+                            UpdateLine(_document.Caret.Line);
+                        }
+                    }
+                }
+            }
+
+            bool shift = e.Shift;
+            bool control = e.Control;
+
+            if (e.KeyCode == Keys.Home)
+            {
+                if (_document.TextSelected && !shift)
+                {
+                    _document.Caret.SetCharIndex(Math.Min(_document.Caret.GetCharIndex(), _document.SelectionStart.GetCharIndex()));
+                    _document.RemoveSelection();
+                    Invalidate();
+                }
+                else
+                {
+                    if (control)
+                    {
+                        _document.Caret.Set(0, 0);
+                    }
+                    else
+                        _document.Caret.Set(_document.Caret.Line, 0);
+
+                    if (!shift)
+                    {
+                        _document.RemoveSelection();
+                    }
+                }
+                _document.ScrollToCaret();
+                FillEmptyCodeRanges();
+
+                _document.SavedCaretColumn = _document.Caret.Column;
+
+                Invalidate();
+            }
+
+            if (e.KeyCode == Keys.End)
+            {
+                if (_document.TextSelected && !shift)
+                {
+                    _document.Caret.SetCharIndex(Math.Max(_document.Caret.GetCharIndex(), _document.SelectionStart.GetCharIndex()));
+                    _document.RemoveSelection();
+                    Invalidate();
+                }
+                else
+                {
+                    string line = _document.Cache.GetLineText(_document.Caret.Line);
+                    if (control)
+                    {
+                        _document.Caret.Set(_document.Cache.LineCount - 1, _document.Cache.GetLineText(_document.Cache.LineCount - 1).Length);
+                    }
+                    else
+                        _document.Caret.Set(_document.Caret.Line, line.Length);
+
+                    if (!shift)
+                    {
+                        _document.RemoveSelection();
+                    }
+                }
+
+                
+                _document.ScrollToCaret();
+                FillEmptyCodeRanges();
+
+                _document.SavedCaretColumn = _document.Caret.Column;
+
+                Invalidate();
             }
 
             base.OnKeyDown(e);
@@ -480,7 +700,8 @@ namespace SharpXEdit
                     _document.Scroll.Vertical -= FontHeight * ScrollSpeed;
                 }
 
-                FillEmptyCodeRanges();
+                RunHighlight();
+                CreateAllVisibleCodeRanges();
 
                 Invalidate();
             }
@@ -521,39 +742,100 @@ namespace SharpXEdit
 
         protected override bool ProcessCmdKey(ref Message msg, Keys keyData)
         {
+            bool flag(Keys key)
+            {
+                return (keyData & key) == key;
+            }
+
+            if (flag(Keys.End) || flag(Keys.Home) || flag(Keys.Left) || flag(Keys.Right) || flag(Keys.Down) || flag(Keys.Up))
+            {
+                return base.ProcessCmdKey(ref msg, keyData);
+            }
+
             if ((keyData & Keys.Control) == Keys.Control)
             {
+                if (flag(Keys.A))
+                {
+                    _document.SelectAll();
+                    _document.ScrollToCaret();
+                    Invalidate();
+                }
+
                 return true;
             }
 
+
             return base.ProcessCmdKey(ref msg, keyData);
+        }
+
+        protected override void OnPreviewKeyDown(PreviewKeyDownEventArgs e)
+        {
+            if (e.KeyCode == Keys.Tab)
+            {
+                e.IsInputKey = true;
+                return;
+            }
+
+            base.OnPreviewKeyDown(e);
         }
 
         protected override bool ProcessDialogKey(Keys keyData)
         {
             Keys keyWithoutModifier = keyData & ~Keys.Modifiers;
             Keys modifiers = keyData & Keys.Modifiers;
+            bool shift = (modifiers & Keys.Shift) == Keys.Shift;
             
             if (keyWithoutModifier == Keys.Right)
             {
-                string line = _document.Cache.GetLineText(_document.Caret.Line);
-                if (_document.Caret.Column == line.Length)
+                if (_document.TextSelected && !shift)
                 {
-                    if (_document.Caret.Line < _document.Cache.LineCount - 1)
-                    {
-                        _document.Caret.Set(_document.Caret.Line + 1, 0);
-                        Invalidate();
-                    }
+                    _document.Caret.SetCharIndex(Math.Max(_document.Caret.GetCharIndex(), _document.SelectionStart.GetCharIndex()));
+                    _document.RemoveSelection();
+                    Invalidate();
                 }
                 else
                 {
-                    _document.Caret.Offset(0, 1);
-                    InvalidateLine(_document.Caret.Line);
-                }
+                    string line = _document.Cache.GetLineText(_document.Caret.Line);
+                    if (_document.Caret.Column == line.Length)
+                    {
+                        if (_document.Caret.Line < _document.Cache.LineCount - 1)
+                        {
+                            _document.Caret.Set(_document.Caret.Line + 1, 0);
+                            Invalidate();
+                        }
+                    }
+                    else
+                    {
+                        if ((modifiers & Keys.Control) == Keys.Control)
+                        {
+                            
+                            bool set = false;
+                            for (int k = _document.Caret.Column; k < line.Length; k++)
+                            {
+                                if (Util.IsWordBreak(line.PtrChar(k)))
+                                {
+                                    _document.Caret.Set(_document.Caret.Line, k == _document.Caret.Column ? k + 1 : k);
+                                    set = true;
+                                    break;
+                                }
+                            }
 
-                if ((modifiers & Keys.Shift) != Keys.Shift)
-                {
-                    _document.RemoveSelection();
+                            if (!set)
+                            {
+                                _document.Caret.Set(_document.Caret.Line, line.Length);
+                            }
+                        }
+                        else
+                        {
+                            _document.Caret.Offset(0, 1);
+                        }
+                        InvalidateLine(_document.Caret.Line);
+                    }
+
+                    if (!shift)
+                    {
+                        _document.RemoveSelection();
+                    }
                 }
 
                 _document.SavedCaretColumn = _document.Caret.Column;
@@ -563,26 +845,60 @@ namespace SharpXEdit
 
             if (keyWithoutModifier == Keys.Left)
             {
-                if (_document.Caret.Column == 0)
+                if (_document.TextSelected && !shift)
                 {
-                    if (_document.Caret.Line > 0)
-                    {
-                        _document.Caret.Set(_document.Caret.Line - 1, _document.Cache.GetLineText(_document.Caret.Line - 1).Length);
-                        Invalidate();
-                    }
+                    _document.Caret.SetCharIndex(Math.Min(_document.Caret.GetCharIndex(), _document.SelectionStart.GetCharIndex()));
+                    _document.RemoveSelection();
+                    Invalidate();
                 }
                 else
                 {
-                    _document.Caret.Offset(0, -1);
-                    InvalidateLine(_document.Caret.Line);
+                    if (_document.Caret.Column == 0)
+                    {
+                        if (_document.Caret.Line > 0)
+                        {
+                            _document.Caret.Set(_document.Caret.Line - 1, _document.Cache.GetLineText(_document.Caret.Line - 1).Length);
+                            Invalidate();
+                        }
+                    }
+                    else
+                    {
+                        if ((modifiers & Keys.Control) == Keys.Control)
+                        {
+                            string line = _document.Cache.GetLineText(_document.Caret.Line);
+                            bool set = false;
+                            int lpBegin = Math.Clamp(_document.Caret.Column - 1, 0, line.Length - 1);
+                            for (int k = lpBegin; k >= 0; k--)
+                            {
+                                if (Util.IsWordBreak(line.PtrChar(k)))
+                                {
+                                    _document.Caret.Set(_document.Caret.Line, k == lpBegin ? k : k + 1);
+                                    set = true;
+                                    break;
+                                }
+                            }
+
+                            if (!set)
+                            {
+                                _document.Caret.Set(_document.Caret.Line, 0);
+                            }
+                        }
+                        else
+                        {
+                            _document.Caret.Offset(0, -1);
+                        }
+                        
+                        InvalidateLine(_document.Caret.Line);
+                    }
+
+                    if (!shift)
+                    {
+                        _document.RemoveSelection();
+                    }
                 }
+
 
                 _document.SavedCaretColumn = _document.Caret.Column;
-
-                if ((modifiers & Keys.Shift) != Keys.Shift)
-                {
-                    _document.RemoveSelection();
-                }
 
                 return true;
             }
@@ -685,6 +1001,7 @@ namespace SharpXEdit
         {
             base.OnSizeChanged(e);
 
+            RunHighlight();
             CreateAllVisibleCodeRanges();
             Invalidate();
         }

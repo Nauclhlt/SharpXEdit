@@ -107,8 +107,10 @@ namespace SharpXEdit
         /// <returns>line index</returns>
         public int GetLineIndex( int charIndex )
         {
-            if (charIndex < 0 || charIndex >= _text.Length)
+            if (charIndex < 0 || charIndex > _text.Length)
+            {
                 return 0;
+            }
             string code = _parent.LineFeedCode.GetCode();
             int pos = 0;
             for (int i = 0; i < _lines.Length; i++)
