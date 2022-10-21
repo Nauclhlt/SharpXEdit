@@ -156,7 +156,7 @@ namespace SharpXEdit
             Rectangle caretBounds = new Rectangle(_document.SourceCodeManager.GetCaretPoint(_document.Caret), new Size(2, FontHeight));
             bool caretInScreen = new Rectangle(0, 0, Width, Height).IntersectsWith(caretBounds);
 
-            if (caretInScreen && !clipBounds.Contains(caretBounds))
+            if (caretInScreen && !clipBounds.IntersectsWith(caretBounds))
             {
                 Invalidate();
                 return;
@@ -256,6 +256,14 @@ namespace SharpXEdit
                 g.FillRectangle(brush, caretBounds);
             }
 
+            bool brender = RenderBracketHighlight(g);
+            if (brender && !redrawAll)
+            {
+                Invalidate();
+                return;
+            }
+            
+
             if (redrawAll)
                 RenderLineNumbers(g);
         }
@@ -277,6 +285,57 @@ namespace SharpXEdit
                 int w = _document.SourceCodeManager.GetWidth(text);
                 TextRenderer.DrawText(g, text, Font, new Point(LineNumberWidth - w - 8, FontHeight * i - _document.Scroll.Vertical), i == _document.Caret.Line ? _theme.CaretLineNumberColor : _theme.LineNumberColor);
             }
+        }
+
+        private bool RenderBracketHighlight( Graphics g )
+        {
+            using Pen pen = new Pen(_theme.BracketHighlightColor, 1);
+
+            bool render = false;
+
+            int charIndex = _document.Caret.GetCharIndex();
+            if (charIndex < _document.Length)
+            {
+                char c = _document.Text.PtrChar(charIndex);
+                if (Util.IsOpenBracket(c))
+                {
+                    int index = Util.SearchCloseBracket(_document.Text, charIndex, c.ToString(), Util.GetPairBracket(c).ToString());
+                    TextPoint point = _document.Cache.GetPoint(index);
+                    draw(_document.Cache.GetPoint(charIndex));
+                    draw(point);
+
+                    render = true;
+                }
+            }
+
+            if (charIndex > 0)
+            {
+                char c = _document.Text.PtrChar(charIndex - 1);
+                if (Util.IsCloseBracket(c))
+                {
+                    int index = Util.SearchOpenBracket(_document.Text, charIndex - 1, Util.GetPairBracket(c).ToString(), c.ToString());
+                    if (index != -1)
+                    {
+                        TextPoint point = _document.Cache.GetPoint(index);
+                        draw(_document.Cache.GetPoint(charIndex - 1));
+                        draw(point);
+
+                        render = true;
+                    }
+                }
+            }
+
+            void draw( TextPoint point )
+            {
+                int y = FontHeight * point.Line;
+                string line = _document.Cache.GetLineText(point.Line);
+                int x = LineNumberWidth + Util.Shared.LeftMargin + _document.SourceCodeManager.GetWidth(line.Substring(0, point.Column));
+                int w = _document.SourceCodeManager.GetWidth(line.Substring(point.Column, 1));
+
+                g.DrawRectangle(pen, x - _document.Scroll.Horizontal, y - _document.Scroll.Vertical, w, FontHeight - 1);
+            }
+
+            return render;
         }
 
         private void DrawText( Graphics g, string text, Font font, Point point, Color foreColor, TextFormatFlags flags )
@@ -531,23 +590,92 @@ namespace SharpXEdit
 
         private void InvisualInput( string value )
         {
+            _document.IDA.RemoveSelectedRange();
+
             string[] lines = value.Replace("\r\n", "\n").Replace('\r', '\n').Split('\n');
 
             for (int i = 0; i < lines.Length; i++)
             {
                 _document.IDA.Insert(_document.Caret.GetCharIndex(), lines[i]);
                 _document.Caret.Offset(0, lines[i].Length);
-                CreateLineCodeRanges(_document.Caret.Line);
 
                 if (i != lines.Length - 1)
+                {
+                    string line = _document.Cache.GetLineText(_document.Caret.Line);
                     BreakLine();
+                    _document.Caret.Set(_document.Caret.Line + 1, 0);
+                    _document.RemoveSelection();
+                    string indent = Util.GetIndentValue(line);
+                    _document.IDA.Insert(_document.Caret.GetCharIndex(), indent);
+                    _document.Caret.Offset(0, indent.Length);
+                    _document.RemoveSelection();
+                }
             }
 
             _document.RemoveSelection();
             _document.ScrollToCaret();
 
+            if (lines.Length == 1)
+            {
+                RunHighlightLine(_document.Caret.Line);
+                CreateLineCodeRanges(_document.Caret.Line);
+            }
+            else
+            {
+                RunHighlight();
+                CreateAllVisibleCodeRanges();
+            }
+
             Invalidate();
         }
+
+        #region Public Methods
+
+        public void FullRedraw()
+        {
+            CreateAllVisibleCodeRanges();
+            RunHighlight();
+            Invalidate();
+        }
+
+        public void Paste()
+        {
+            if (Clipboard.ContainsText())
+            {
+                string clipboard = Clipboard.GetText();
+                Paste(clipboard);
+            }
+        }
+
+        public void Copy()
+        {
+            if (_document.TextSelected)
+            {
+                string value = _document.SelectedText;
+                Clipboard.SetText(value);
+            }
+        }
+
+        public void Cut()
+        {
+            if (_document.TextSelected)
+            {
+                string value = _document.SelectedText;
+                _document.IDA.RemoveSelectedRange();
+                Clipboard.SetText(value);
+
+                CreateAllVisibleCodeRanges();
+                RunHighlight();
+                Invalidate();
+            }
+        }
+
+        public void Paste( string value )
+        {
+            InvisualInput(value);
+        }
+
+        #endregion
 
         private void BreakLine()
         {
@@ -677,6 +805,7 @@ namespace SharpXEdit
                 Invalidate();
             }
 
+            
             base.OnKeyDown(e);
         }
 
@@ -688,16 +817,33 @@ namespace SharpXEdit
 
             if (delta != 0)
             {
-                if (delta < 0)
+                if ((ModifierKeys & Keys.Shift) == Keys.Shift)
                 {
-                    //Scroll down
+                    if (delta < 0)
+                    {
+                        //Scroll down
 
-                    _document.Scroll.Vertical += FontHeight * ScrollSpeed;
+                        _document.Scroll.Horizontal += FontHeight * ScrollSpeed;
+                    }
+                    else
+                    {
+                        //Scroll up
+                        _document.Scroll.Horizontal -= FontHeight * ScrollSpeed;
+                    }
                 }
                 else
                 {
-                    //Scroll up
-                    _document.Scroll.Vertical -= FontHeight * ScrollSpeed;
+                    if (delta < 0)
+                    {
+                        //Scroll down
+
+                        _document.Scroll.Vertical += FontHeight * ScrollSpeed;
+                    }
+                    else
+                    {
+                        //Scroll up
+                        _document.Scroll.Vertical -= FontHeight * ScrollSpeed;
+                    }
                 }
 
                 RunHighlight();
@@ -744,7 +890,7 @@ namespace SharpXEdit
         {
             bool flag(Keys key)
             {
-                return (keyData & key) == key;
+                return ((keyData & ~Keys.Modifiers) & key) == key;
             }
 
             if (flag(Keys.End) || flag(Keys.Home) || flag(Keys.Left) || flag(Keys.Right) || flag(Keys.Down) || flag(Keys.Up))
@@ -752,18 +898,10 @@ namespace SharpXEdit
                 return base.ProcessCmdKey(ref msg, keyData);
             }
 
-            if ((keyData & Keys.Control) == Keys.Control)
+            if ((ModifierKeys & Keys.Control) == Keys.Control)
             {
-                if (flag(Keys.A))
-                {
-                    _document.SelectAll();
-                    _document.ScrollToCaret();
-                    Invalidate();
-                }
-
                 return true;
             }
-
 
             return base.ProcessCmdKey(ref msg, keyData);
         }
@@ -773,6 +911,35 @@ namespace SharpXEdit
             if (e.KeyCode == Keys.Tab)
             {
                 e.IsInputKey = true;
+                return;
+            }
+
+            if (e.Control)
+            {
+                if (e.KeyCode == Keys.A)
+                {
+                    _document.SelectAll();
+                    _document.ScrollToCaret();
+
+                    Invalidate();
+                }
+
+                if (e.KeyCode == Keys.C)
+                {
+                    Copy();
+                }
+
+                if (e.KeyCode == Keys.V)
+                {
+                    Paste();
+                }
+
+                if (e.KeyCode == Keys.X)
+                {
+                    Cut();
+                }
+
+                e.IsInputKey = false;
                 return;
             }
 

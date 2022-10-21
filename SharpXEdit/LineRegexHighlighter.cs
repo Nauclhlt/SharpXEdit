@@ -12,31 +12,22 @@ using System.Text.RegularExpressions;
 namespace SharpXEdit
 {
     /// <summary>
-    /// Provides a header highlighting process
+    /// Provides a regex highlighting process
     /// </summary>
-    public sealed class HeaderHighlighter : SourceCodeHighlighter
+    public sealed class LineRegexHighlighter : SourceCodeHighlighter
     {
         private CharStyle _style;
-        private string _header;
         private Regex _regex;
-        private bool _self = true;
 
         /// <summary>
         /// Creates new object
         /// </summary>
         /// <param name="style"></param>
-        /// <param name="header"></param>
-        /// <param name="self"></param>
-        /// <param name="replace"></param>
-        public HeaderHighlighter( CharStyle style, string header, bool self = true, bool replace = true )
+        /// <param name="regex"></param>
+        public LineRegexHighlighter( CharStyle style, Regex regex )
         {
             _style = style;
-            _header = header;
-            _self = self;
-
-            _regex = new Regex(Regex.Escape(header) + ".*");
-
-            Final = replace;
+            _regex = regex;
         }
 
         /// <summary>
@@ -57,18 +48,7 @@ namespace SharpXEdit
                 {
                     Match match = matches[m];
 
-                    if (_self)
-                    {
-                        doc.SourceCodeColor.SetRangeColor(head + match.Index, match.Length, _style);
-                        if (Final)
-                            doc.SourceCodeColor.SetRangeMetaIfUndef(head + match.Index, match.Length, SrcCodeMeta.HEADER_DEFINED);
-                    }
-                    else
-                    {
-                        doc.SourceCodeColor.SetRangeColor(head + match.Index + _header.Length, match.Length - _header.Length, _style);
-                        if (Final)
-                            doc.SourceCodeColor.SetRangeMetaIfUndef(head + match.Index, match.Length, SrcCodeMeta.HEADER_DEFINED);
-                    }
+                    doc.SourceCodeColor.SetRangeColorIfUndefMetaIsNot(head + match.Index, match.Length, SrcCodeMeta.ENCLOSURE_DEFINED, _style);
                 }
             }
         }

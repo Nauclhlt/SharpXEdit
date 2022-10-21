@@ -64,6 +64,7 @@ namespace SharpXEdit
 
         public void MouseSelect( Point mousePoint )
         {
+            mousePoint.Offset(_document.Scroll.Horizontal, 0);
             TextPoint pt = GetPointFromMousePoint(mousePoint);
             _document.Caret.Set(pt.Line, pt.Column);
             _document.RemoveSelection();
@@ -71,6 +72,7 @@ namespace SharpXEdit
 
         public void MouseDrag( Point mousePoint )
         {
+            mousePoint.Offset(_document.Scroll.Horizontal, 0);
             TextPoint pt = GetPointFromMousePoint(mousePoint);
             _document.Caret.Set(pt.Line, pt.Column);
         }

@@ -25,6 +25,7 @@ namespace SharpXEdit
         private Color _lineNumberBackgroundColor = Color.White;
         private Color _caretLineNumberColor = Color.Gray;
         private Color _caretLineNumberBackgroundColor = Color.White;
+        private Color _bracketHighlightColor = Color.FromArgb(210, 210, 210);
 
         /// <summary>
         /// Background color of a text area
@@ -96,11 +97,22 @@ namespace SharpXEdit
         /// Background color of line number of a line which contains the caret of text area
         /// </summary>
         [Category("SharpXEdit")]
-        [Description("Background color of line number of a line which contains the caret of text area")]
+        [Description("Background color of line number of a line which contains the caret of a text area")]
         public Color CaretLineNumberBackgroundColor
         {
             get => _caretLineNumberBackgroundColor;
             set => _caretLineNumberBackgroundColor = value;
+        }
+
+        /// <summary>
+        /// Bracket highlighting color of a text area
+        /// </summary>
+        [Category("SharpXEdit")]
+        [Description("Bracket highlighting color of a text area")]
+        public Color BracketHighlightColor
+        {
+            get => _bracketHighlightColor;
+            set => _bracketHighlightColor = value;
         }
     }
 }

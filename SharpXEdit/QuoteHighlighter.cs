@@ -95,7 +95,8 @@ namespace SharpXEdit
                         Match match = matches[m];
                         if (_self)
                         {
-                            doc.SourceCodeColor.SetRangeMetaIfUndef(head + match.Index, match.Length, SrcCodeMeta.ENCLOSURE_DEFINED);
+                            if (Final)
+                                doc.SourceCodeColor.SetRangeMetaIfUndef(head + match.Index, match.Length, SrcCodeMeta.ENCLOSURE_DEFINED);
                             doc.SourceCodeColor.SetRangeColor(head + match.Index, match.Length, _style);
                         }
                         else
@@ -105,8 +106,9 @@ namespace SharpXEdit
                                 doc.SourceCodeColor.SetRangeColorIfUndef(head + match.Index, _openLen, _outStyle);
                                 doc.SourceCodeColor.SetRangeColorIfUndef(head + match.Index + match.Length - _closeLen, _closeLen, _outStyle);
                             }
-                            doc.SourceCodeColor.SetRangeMetaIfUndef(head + match.Index, match.Length, SrcCodeMeta.ENCLOSURE_DEFINED);
-                            doc.SourceCodeColor.SetRangeColor(head + match.Index + _openLen, match.Length - _openLen - _closeLen, _style);
+                            if (Final)
+                                doc.SourceCodeColor.SetRangeMetaIfUndef(head + match.Index, match.Length, SrcCodeMeta.ENCLOSURE_DEFINED);
+                            doc.SourceCodeColor.SetRangeColorIfMetaIsNot(head + match.Index + _openLen, match.Length - _openLen - _closeLen, _style, SrcCodeMeta.HEADER_DEFINED);
                         }
                     }
                 }

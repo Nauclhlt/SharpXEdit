@@ -25,6 +25,10 @@ namespace SharpXEdit
         /// DEFINED BY A ENCLOSURE
         /// </summary>
         public static int ENCLOSURE_DEFINED => 1;
+        /// <summary>
+        /// DEFINED BY A HEADER
+        /// </summary>
+        public static int HEADER_DEFINED => 2;
     }
 
     /// <summary>
@@ -103,6 +107,23 @@ namespace SharpXEdit
             for (int i = charIndex; i < charIndex + length; i++)
             {
                 SetColor(i, charColor);
+            }
+        }
+        /// <summary>
+        /// Sets the specified range of the styles
+        /// </summary>
+        /// <param name="charIndex">character index</param>
+        /// <param name="length">length of the range</param>
+        /// <param name="charColor">character style</param>
+        /// <param name="meta">meta data to compare with</param>
+        public void SetRangeColorIfMetaIsNot(int charIndex, int length, CharStyle charColor, int meta)
+        {
+            for (int i = charIndex; i < charIndex + length; i++)
+            {
+                if (GetMeta(i) != meta)
+                {
+                    SetColor(i, charColor);
+                }
             }
         }
 

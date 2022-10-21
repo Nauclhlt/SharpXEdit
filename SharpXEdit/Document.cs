@@ -220,6 +220,21 @@ namespace SharpXEdit
             }
         }
 
+        /// <summary>
+        /// Gets the selected text
+        /// </summary>
+        public string SelectedText
+        {
+            get 
+            {
+                int charIndex1 = _caret.GetCharIndex(), charIndex2 = _selectionStart.GetCharIndex();
+                int begin = Math.Min(charIndex1, charIndex2);
+                int end = Math.Max(charIndex1, charIndex2);
+
+                return _lastText.Substring(begin, end - begin);
+            }
+        }
+
         internal Document( TextArea parent )
         {
             _parent = parent;

@@ -51,7 +51,7 @@ namespace SharpXEdit
             string line = _document.Cache.GetLineText(caret.Line);
             int width = GetWidth(line.AsSpan(0, caret.Column));
 
-            return new Point(GetTextLeft() + width, GetLineTop(caret.Line));
+            return new Point(GetTextLeft() + width - _document.Scroll.Horizontal, GetLineTop(caret.Line));
         }
 
         public int GetLineStart()
