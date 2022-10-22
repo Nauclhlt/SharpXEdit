@@ -85,5 +85,10 @@ namespace SharpXEdit
                 HorizontalChanged?.Invoke(this, EventArgs.Empty);
             }
         }
+
+        /// <summary>
+        /// Gets the limit of the horizontal scrolling value
+        /// </summary>
+        public int HorizontalLimit => Math.Max(0, _document.SourceCodeManager.GetWidth(_document.Cache.GetLineText(_document.Cache.LongestLine)) - _document.SourceCodeManager.GetWidth("A"));
     }
 }

@@ -26,6 +26,7 @@ namespace SharpXEdit
         private Color _caretLineNumberColor = Color.Gray;
         private Color _caretLineNumberBackgroundColor = Color.White;
         private Color _bracketHighlightColor = Color.FromArgb(210, 210, 210);
+        private Color _selectionColor = Color.FromArgb(128, Color.SkyBlue);
 
         /// <summary>
         /// Background color of a text area
@@ -113,6 +114,17 @@ namespace SharpXEdit
         {
             get => _bracketHighlightColor;
             set => _bracketHighlightColor = value;
+        }
+
+        /// <summary>
+        /// Background color of the range of selection
+        /// </summary>
+        [Category("SharpXEdit")]
+        [Description("Background color of the range of selection")]
+        public Color SelectionColor
+        {
+            get => _selectionColor;
+            set => _selectionColor = value;
         }
     }
 }

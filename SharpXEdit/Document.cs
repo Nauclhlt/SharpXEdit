@@ -169,7 +169,10 @@ namespace SharpXEdit
         /// </summary>
         public int LineCount => Cache.LineCount;
 
-        internal SourceCodeManager SourceCodeManager => _sourceCodeManager;
+        /// <summary>
+        /// Gets the source code manager for the document
+        /// </summary>
+        public SourceCodeManager SourceCodeManager => _sourceCodeManager;
 
         internal SelectionManager SelectionManager => _selectionManager;
 
@@ -350,15 +353,107 @@ namespace SharpXEdit
             int start = _sourceCodeManager.GetLineStart();
             int count = _sourceCodeManager.GetVisibleLineCount();
             int end = start + count;
+            Point point = _sourceCodeManager.GetCaretPoint(_caret);
 
             if (_caret.Line < start)
             {
                 _scroll.ScrollToLine(_caret.Line);
             }
-            else if (_caret.Line > end)
+            else if (_caret.Line >= end)
             {
                 _scroll.ScrollToLineBottom(_caret.Line);
             }
+
+            if (point.X < _parent.LineNumberWidth)
+            {
+                _scroll.Horizontal = _scroll.Horizontal + point.X - 10;
+            }
+            if (point.X > _parent.Width)
+            {
+                _scroll.Horizontal = _scroll.Horizontal + point.X - _parent.Width + 10;
+            }
+        }
+
+        /// <summary>
+        /// Gets the word at the caret
+        /// </summary>
+        /// <returns>word</returns>
+        public string GetCaretWord()
+        {
+            //int charIndex = _caret.GetCharIndex();
+            string line = Cache.GetLineText(_caret.Line);
+            int index = _caret.Column;
+
+            int begin = 0;
+            int len = 0;
+            unsafe
+            {
+                fixed (char* ptr = line)
+                {
+                    for (int i = index - 1; i >= 0; i--)
+                    {
+                        if (Util.IsWordBreak(ptr[i]))
+                        {
+                            begin = i + 1;
+                            break;
+                        }
+                        else if (i == 0)
+                        {
+                            begin = 0;
+                            break;
+                        }
+                    }
+
+                    for (int i = begin; i < line.Length; i++)
+                    {
+                        if (Util.IsWordBreak(ptr[i]))
+                        {
+                            len = i - begin + 1;
+                            break;
+                        }
+                        else if (i == line.Length - 1)
+                        {
+                            len = i - begin + 1;
+                            break;
+                        }
+                    }
+                }
+            }
+
+            return line.Substring(begin, len);
+        }
+
+        /// <summary>
+        /// Gets the beginning char of the word at the caret
+        /// </summary>
+        /// <returns></returns>
+        public TextPoint GetCaretWordBegin()
+        {
+            string line = Cache.GetLineText(_caret.Line);
+            int index = _caret.Column;
+
+            int begin = 0;
+            unsafe
+            {
+                fixed (char* ptr = line)
+                {
+                    for (int i = index - 1; i >= 0; i--)
+                    {
+                        if (Util.IsWordBreak(ptr[i]))
+                        {
+                            begin = i + 1;
+                            break;
+                        }
+                        else if (i == 0)
+                        {
+                            begin = 0;
+                            break;
+                        }
+                    }
+                }
+            }
+
+            return new TextPoint(_caret.Line, begin);
         }
 
         internal void RemoveSelection()

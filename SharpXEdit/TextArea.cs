@@ -42,10 +42,16 @@ namespace SharpXEdit
         private int _lineNumberWidth = 80;
         private Dictionary<int, List<CodeRange>> _codeRanges = new Dictionary<int, List<CodeRange>>();
         private TextAreaTheme _theme = new TextAreaTheme();
+        private TextAreaTheme _autoCompleteTheme = new TextAreaTheme();
         private IntPtr _hImc = IntPtr.Zero;
         private bool _mouseDown = false;
         private int _scrollSpeed = 3;
         private HighlighterCollection _highlighters = new HighlighterCollection();
+        private bool _autoCompleteOpened = false;
+        private List<string> _autoCompleteSuggests = new List<string>();
+        private int _autoCompleteSelected = 0;
+        private LineNumberRenderer _lineNumberRenderer = new LineNumberRenderer();
+        private XTextEditor _container;
 
 
         private Font _boldFont;
@@ -67,6 +73,8 @@ namespace SharpXEdit
                 RemoveDocumentEvents(_document);
                 _document = value;
                 AddDocumentEvents(_document);
+
+                DocumentChanged?.Invoke(this, EventArgs.Empty);
             }
         }
 
@@ -78,6 +86,8 @@ namespace SharpXEdit
                 if (value <= 0)
                     return;
                 _lineNumberWidth = value;
+
+                LineNumberWidthChanged?.Invoke(this, EventArgs.Empty);
             }
         }
 
@@ -89,6 +99,8 @@ namespace SharpXEdit
                 if (value is object)
                 {
                     _theme = value;
+
+                    ThemeChanged?.Invoke(this, EventArgs.Empty);
                 }
             }
         }
@@ -99,6 +111,8 @@ namespace SharpXEdit
             set
             {
                 _scrollSpeed = Math.Max(1, value);
+
+                ScrollSpeedChanged?.Invoke(this, EventArgs.Empty);
             }
         }
 
@@ -124,7 +138,56 @@ namespace SharpXEdit
             }
         }
 
+        public StringCollection AutoCompleteSource
+        {
+            get;
+        } = new StringCollection();
+
+        public TextAreaTheme AutoCompleteTheme
+        {
+            get => _autoCompleteTheme;
+            set 
+            {
+                if (value is object)
+                {
+                    _autoCompleteTheme = value;
+
+                    AutoCompleteThemeChanged?.Invoke(this, EventArgs.Empty);
+                }
+            }
+        }
+
+        public LineNumberRenderer LineNumberRenderer
+        {
+            get => _lineNumberRenderer;
+            set
+            {
+                if (value is object)
+                {
+                    _lineNumberRenderer = value;
+
+                    LineNumberRendererChanged?.Invoke(this, EventArgs.Empty);
+                }
+            }
+        }
+
+
+        public override string Text { 
+            get => _document.Text; set => _document.Text = value; 
+        }
+
         public new int FontHeight => base.FontHeight;
+
+
+
+        public event EventHandler DocumentChanged;
+        public event EventHandler ThemeChanged;
+        public event EventHandler AutoCompleteThemeChanged;
+        public event EventHandler LineNumberWidthChanged;
+        public event EventHandler ScrollSpeedChanged;
+        public event EventHandler DocumentTextChanged;
+        public event EventHandler LineNumberRendererChanged;
+
 
         public TextArea()
         {
@@ -134,8 +197,14 @@ namespace SharpXEdit
 
 
             _document = new Document(this);
+            AddDocumentEvents(_document);
 
             Cursor = Cursors.IBeam;
+        }
+
+        public void SetContainer( XTextEditor container )
+        {
+            _container = container;
         }
 
         protected override void OnPaintBackground(PaintEventArgs e)
@@ -152,6 +221,12 @@ namespace SharpXEdit
             Graphics g = e.Graphics;
             Rectangle clipBounds = e.ClipRectangle;
             bool redrawAll = e.ClipRectangle.Left == 0 && e.ClipRectangle.Top == 0 && e.ClipRectangle.Width == Width && e.ClipRectangle.Height == Height;
+
+            if (!redrawAll && _autoCompleteOpened && _autoCompleteSuggests.Count > 0)
+            {
+                Invalidate();
+                return;
+            }
 
             Rectangle caretBounds = new Rectangle(_document.SourceCodeManager.GetCaretPoint(_document.Caret), new Size(2, FontHeight));
             bool caretInScreen = new Rectangle(0, 0, Width, Height).IntersectsWith(caretBounds);
@@ -182,7 +257,7 @@ namespace SharpXEdit
 
             //Console.WriteLine(selectionBegin + "," + selectionEnd);
 
-            using SolidBrush selectionBrush = new SolidBrush(Color.Aquamarine);
+            SolidBrush selectionBrush = BrushFactory.GetInstance(_theme.SelectionColor);
 
             for (int i = lineStart; i < lineStart + lineCount; i++)
             {
@@ -203,9 +278,9 @@ namespace SharpXEdit
                     // The line is completely in the range of selection
 
                     int lineWidth = _document.SourceCodeManager.GetWidth(line);
-                    lineWidth = Math.Clamp(lineWidth, Util.Shared.LineFeedSelectionWidth, Width - LineNumberWidth - Util.Shared.LeftMargin);
+                    lineWidth = Math.Clamp(lineWidth, Util.Shared.LineFeedSelectionWidth, Width - _document.SourceCodeManager.GetTextLeft());
 
-                    g.FillRectangle(selectionBrush, LineNumberWidth + Util.Shared.LeftMargin, FontHeight * i - _document.Scroll.Vertical, lineWidth, FontHeight);
+                    g.FillRectangle(selectionBrush, _document.SourceCodeManager.GetTextLeft(), FontHeight * i - _document.Scroll.Vertical, lineWidth, FontHeight);
                 }
                 else
                 {
@@ -232,7 +307,7 @@ namespace SharpXEdit
                         }
                     }
 
-                    g.FillRectangle(selectionBrush, LineNumberWidth + Util.Shared.LeftMargin + _document.SourceCodeManager.GetWidth(line.Substring(0, begin)), FontHeight * i - _document.Scroll.Vertical, _document.SourceCodeManager.GetWidth(line.Substring(begin, len)), FontHeight);
+                    g.FillRectangle(selectionBrush, _document.SourceCodeManager.GetTextLeft() + _document.SourceCodeManager.GetWidth(line.Substring(0, begin)), FontHeight * i - _document.Scroll.Vertical, _document.SourceCodeManager.GetWidth(line.Substring(begin, len)), FontHeight);
                 }
 
 
@@ -262,6 +337,8 @@ namespace SharpXEdit
                 Invalidate();
                 return;
             }
+
+            RenderAutoCompleteWindow(g);
             
 
             if (redrawAll)
@@ -270,21 +347,9 @@ namespace SharpXEdit
 
         private void RenderLineNumbers( Graphics g )
         {
-            SolidBrush backBrush = BrushFactory.GetInstance(_theme.LineNumberBackgroundColor);
-            g.FillRectangle(backBrush, 0, 0, _lineNumberWidth, Height);
-
-            int lineStart = _document.SourceCodeManager.GetLineStart();
-            int lineCount = _document.SourceCodeManager.GetVisibleLineCount();
-
-            for (int i = lineStart; i < lineStart + lineCount; i++)
-            {
-                if (i < 0 || i >= _document.Cache.LineCount)
-                    return;
-
-                string text = (i + 1).ToString();
-                int w = _document.SourceCodeManager.GetWidth(text);
-                TextRenderer.DrawText(g, text, Font, new Point(LineNumberWidth - w - 8, FontHeight * i - _document.Scroll.Vertical), i == _document.Caret.Line ? _theme.CaretLineNumberColor : _theme.LineNumberColor);
-            }
+            int start = _document.SourceCodeManager.GetLineStart();
+            int count = _document.SourceCodeManager.GetVisibleLineCount();
+            _lineNumberRenderer.Render(start, count, _theme, _container, g);
         }
 
         private bool RenderBracketHighlight( Graphics g )
@@ -329,13 +394,45 @@ namespace SharpXEdit
             {
                 int y = FontHeight * point.Line;
                 string line = _document.Cache.GetLineText(point.Line);
-                int x = LineNumberWidth + Util.Shared.LeftMargin + _document.SourceCodeManager.GetWidth(line.Substring(0, point.Column));
+                int x = _document.SourceCodeManager.GetTextLeft() + _document.SourceCodeManager.GetWidth(line.Substring(0, point.Column));
                 int w = _document.SourceCodeManager.GetWidth(line.Substring(point.Column, 1));
 
                 g.DrawRectangle(pen, x - _document.Scroll.Horizontal, y - _document.Scroll.Vertical, w, FontHeight - 1);
             }
 
             return render;
+        }
+
+        private void RenderAutoCompleteWindow( Graphics g )
+        {
+            if (_autoCompleteSuggests.Count == 0)
+                return;
+
+            TextPoint begin = _document.GetCaretWordBegin();
+            Point topLeft = _document.SourceCodeManager.GetScreenPoint(begin);
+            topLeft.Offset(0, FontHeight);
+
+            int width = 0;
+
+            for (int i = 0; i < _autoCompleteSuggests.Count; i++)
+            {
+                int w = _document.SourceCodeManager.GetWidth(_autoCompleteSuggests[i]);
+
+                if (w > width)
+                {
+                    width = w;
+                }
+            }
+
+            width += 40;
+
+            SolidBrush backBrush = BrushFactory.GetInstance(_autoCompleteTheme.BackgroundColor);
+            SolidBrush selectionBackBrush = BrushFactory.GetInstance(_autoCompleteTheme.SelectionColor);
+            for (int i = 0; i < Math.Min(10, _autoCompleteSuggests.Count); i++)
+            {
+                g.FillRectangle(_autoCompleteSelected == i ? selectionBackBrush : backBrush, topLeft.X, topLeft.Y + FontHeight * i, width, FontHeight);
+                TextRenderer.DrawText(g, _autoCompleteSuggests[i], Font, new Point(topLeft.X + 10, topLeft.Y + FontHeight * i), _autoCompleteSelected == i ? _autoCompleteTheme.LineNumberColor : _autoCompleteTheme.TextColor);
+            }
         }
 
         private void DrawText( Graphics g, string text, Font font, Point point, Color foreColor, TextFormatFlags flags )
@@ -499,19 +596,11 @@ namespace SharpXEdit
         {
             if (character == '\r')
             {
-                _document.IDA.RemoveSelectedRange();
+                return;
+            }
 
-                string line = _document.Cache.GetLineText(_document.Caret.Line);
-                BreakLine();
-                _document.Caret.Set(_document.Caret.Line + 1, 0);
-                _document.RemoveSelection();
-                string indent = Util.GetIndentValue(line);
-                _document.IDA.Insert(_document.Caret.GetCharIndex(), indent);
-                _document.Caret.Offset(0, indent.Length);
-                _document.RemoveSelection();
-                RunHighlight();
-                CreateAllVisibleCodeRanges();
-                Invalidate();
+            if (character == 27)
+            {
                 return;
             }
 
@@ -531,6 +620,8 @@ namespace SharpXEdit
                     _document.RemoveSelection();
                     _document.ScrollToCaret();
 
+                    CloseAutoComplete();
+
                     RunHighlight();
                     CreateAllVisibleCodeRanges();
                     Invalidate();
@@ -549,6 +640,8 @@ namespace SharpXEdit
                             _document.RemoveSelection();
                             _document.ScrollToCaret();
 
+                            CloseAutoComplete();
+
                             RunHighlight();
                             CreateAllVisibleCodeRanges();
                             Invalidate();
@@ -561,6 +654,9 @@ namespace SharpXEdit
                         _document.RemoveSelection();
                         _document.ScrollToCaret();
 
+                        OpenAutoComplete();
+                        UpdateAutoComplete();
+
                         RunHighlightLine(_document.Caret.Line);
                         UpdateLine(_document.Caret.Line);
                     }
@@ -570,7 +666,7 @@ namespace SharpXEdit
             }
 
             
-            _document.IDA.RemoveSelectedRange();
+            RemoveSelectedRange();
             charIndex = _document.Caret.GetCharIndex();
 
             _document.IDA.Insert(charIndex, character);
@@ -578,6 +674,9 @@ namespace SharpXEdit
             _document.Caret.Offset(0, 1);
             _document.RemoveSelection();
             _document.ScrollToCaret();
+
+            OpenAutoComplete();
+            UpdateAutoComplete();
 
             RunHighlightLine(_document.Caret.Line);
             UpdateLine(_document.Caret.Line);
@@ -590,7 +689,7 @@ namespace SharpXEdit
 
         private void InvisualInput( string value )
         {
-            _document.IDA.RemoveSelectedRange();
+            RemoveSelectedRange();
 
             string[] lines = value.Replace("\r\n", "\n").Replace('\r', '\n').Split('\n');
 
@@ -661,7 +760,7 @@ namespace SharpXEdit
             if (_document.TextSelected)
             {
                 string value = _document.SelectedText;
-                _document.IDA.RemoveSelectedRange();
+                RemoveSelectedRange();
                 Clipboard.SetText(value);
 
                 CreateAllVisibleCodeRanges();
@@ -696,8 +795,121 @@ namespace SharpXEdit
             Invalidate(_document.SourceCodeManager.GetLineRefreshBounds(lineIndex));
         }
 
+        private void RemoveSelectedRange()
+        {
+            bool s = _document.TextSelected;
+            _document.IDA.RemoveSelectedRange();
+            if (s)
+            {
+                RunHighlight();
+                CreateAllVisibleCodeRanges();
+                Invalidate();
+            }
+        }
+
+        #region Auto complete stuff
+
+        private void OpenAutoComplete()
+        {
+            _autoCompleteOpened = true;
+            _autoCompleteSuggests.Clear();
+        }
+
+        private void CloseAutoComplete()
+        {
+            _autoCompleteOpened = false;
+            _autoCompleteSuggests.Clear();
+            Invalidate();
+        }
+
+        private unsafe void UpdateAutoComplete()
+        {
+            string word = _document.GetCaretWord();
+
+            int c = _autoCompleteSuggests.Count;
+            _autoCompleteSuggests.Clear();
+
+            if (string.IsNullOrEmpty(word))
+            {
+                CloseAutoComplete();
+                if (c > 0)
+                    Invalidate();
+                return;
+            }
+
+            fixed ( char* wp = word )
+            {
+                for (int i = 0; i < AutoCompleteSource.Count; i++)
+                {
+                    if (AutoCompleteSource[i].Length < word.Length)
+                        continue;
+
+                    if (AutoCompleteSource[i].StartsWith(word, StringComparison.OrdinalIgnoreCase))
+                    {
+                        _autoCompleteSuggests.Add(AutoCompleteSource[i]);
+                    }
+                }
+            }
+
+            if (_autoCompleteSuggests.Count == 0)
+            {
+                CloseAutoComplete();
+            }
+
+            _autoCompleteSelected = 0;
+            Invalidate();
+        }
+
+        #endregion
+
         protected override void OnKeyDown(KeyEventArgs e)
         {
+            if (e.KeyCode == Keys.Enter)
+            {
+                if (_autoCompleteOpened)
+                {
+                    if (_autoCompleteSuggests.Count != 0)
+                    {
+                        string word = _autoCompleteSuggests[_autoCompleteSelected];
+                        TextPoint beginPoint = _document.GetCaretWordBegin();
+                        string cword = _document.GetCaretWord();
+                        int begin = _document.Cache.GetCharIndex(beginPoint);
+
+                        _document.IDA.Remove(begin, cword.Length);
+                        _document.IDA.Insert(begin, word);
+
+                        _document.Caret.SetCharIndex(begin + word.Length);
+                        _document.RemoveSelection();
+
+                        CloseAutoComplete();
+
+                        RunHighlight();
+                        CreateAllVisibleCodeRanges();
+                        Invalidate();
+                    }
+                }
+                else
+                {
+                    RemoveSelectedRange();
+
+                    string line = _document.Cache.GetLineText(_document.Caret.Line);
+                    BreakLine();
+                    _document.Caret.Set(_document.Caret.Line + 1, 0);
+                    _document.RemoveSelection();
+                    string indent = Util.GetIndentValue(line);
+                    _document.IDA.Insert(_document.Caret.GetCharIndex(), indent);
+                    _document.Caret.Offset(0, indent.Length);
+                    _document.RemoveSelection();
+
+                    _document.ScrollToCaret();
+
+                    RunHighlight();
+                    CreateAllVisibleCodeRanges();
+                    Invalidate();
+                }
+            }
+
+
             if ( e.KeyCode == Keys.Delete )
             {
                 if (_document.TextSelected)
@@ -914,6 +1126,17 @@ namespace SharpXEdit
                 return;
             }
 
+            if (e.KeyCode == Keys.Escape)
+            {
+                if (_autoCompleteOpened)
+                {
+                    CloseAutoComplete();
+                }
+
+                e.IsInputKey = false;
+                return;
+            }
+
             if (e.Control)
             {
                 if (e.KeyCode == Keys.A)
@@ -1070,7 +1293,7 @@ namespace SharpXEdit
                 return true;
             }
 
-            if (keyWithoutModifier == Keys.Down)
+            void downKey()
             {
                 if (_document.Caret.Line < _document.Cache.LineCount - 1)
                 {
@@ -1084,6 +1307,8 @@ namespace SharpXEdit
                     else
                         _document.Caret.Set(_document.Caret.Line + 1, Math.Min(nextLine.Length, _document.SavedCaretColumn));
 
+                    _document.ScrollToCaret();
+
                     Invalidate();
                 }
 
@@ -1091,11 +1316,9 @@ namespace SharpXEdit
                 {
                     _document.RemoveSelection();
                 }
-
-                return true;
             }
 
-            if (keyWithoutModifier == Keys.Up)
+            void upKey()
             {
                 if (_document.Caret.Line > 0)
                 {
@@ -1109,12 +1332,48 @@ namespace SharpXEdit
                     else
                         _document.Caret.Set(_document.Caret.Line - 1, Math.Min(prevLine.Length, _document.SavedCaretColumn));
 
+                    _document.ScrollToCaret();
+
                     Invalidate();
                 }
 
                 if ((modifiers & Keys.Shift) != Keys.Shift)
                 {
                     _document.RemoveSelection();
+                }
+            }
+
+            if (keyWithoutModifier == Keys.Down)
+            {
+                if (_autoCompleteOpened)
+                {
+                    if (_autoCompleteSelected < _autoCompleteSuggests.Count - 1)
+                    {
+                        _autoCompleteSelected++;
+                        Invalidate();
+                    }
+                }
+                else
+                {
+                    downKey();
+                }
+
+                return true;
+            }
+
+            if (keyWithoutModifier == Keys.Up)
+            {
+                if (_autoCompleteOpened)
+                {
+                    if (_autoCompleteSelected > 0)
+                    {
+                        _autoCompleteSelected--;
+                        Invalidate();
+                    }
+                }
+                else
+                {
+                    upKey();
                 }
 
                 return true;
@@ -1131,7 +1390,12 @@ namespace SharpXEdit
 
         private void OnHorizontalScrollChanged( object sender, EventArgs e )
         {
+            Invalidate();
+        }
 
+        private void OnDocumentTextChanged( object sender, EventArgs e )
+        {
+            DocumentTextChanged?.Invoke(this, EventArgs.Empty);
         }
 
 
@@ -1139,12 +1403,14 @@ namespace SharpXEdit
         {
             doc.Scroll.VerticalChanged += OnVerticalScrollChanged;
             doc.Scroll.HorizontalChanged += OnHorizontalScrollChanged;
+            doc.TextChanged += OnDocumentTextChanged;
         }
 
         private void RemoveDocumentEvents( Document doc )
         {
             doc.Scroll.VerticalChanged -= OnVerticalScrollChanged;
             doc.Scroll.HorizontalChanged -= OnHorizontalScrollChanged;
+            doc.TextChanged -= OnDocumentTextChanged;
         }
 
 
